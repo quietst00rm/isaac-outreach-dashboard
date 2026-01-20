@@ -1,0 +1,154 @@
+export type PipelineStatus =
+  | 'not_contacted'
+  | 'visited'
+  | 'connection_sent'
+  | 'connected'
+  | 'message_sent'
+  | 'responded'
+  | 'call_booked'
+  | 'closed_won'
+  | 'closed_lost';
+
+export type MessageType =
+  | 'connection_request'
+  | 'follow_up_1'
+  | 'follow_up_2'
+  | 'comment';
+
+export interface Experience {
+  companyName: string;
+  title: string;
+  description?: string;
+  startDate?: string;
+  endDate?: string;
+  isCurrent?: boolean;
+}
+
+export interface RecentPost {
+  content: string;
+  date: string;
+  url?: string;
+  engagement?: {
+    likes: number;
+    comments: number;
+  };
+}
+
+export interface ICPScoreBreakdown {
+  industry: number;
+  title: number;
+  agency: number;
+  ecommerceExperience: number;
+  profileCompleteness: number;
+  total: number;
+}
+
+export interface Prospect {
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  linkedinUrl: string;
+  profilePicUrl?: string;
+  headline?: string;
+  aboutSummary?: string;
+  companyName?: string;
+  companyIndustry?: string;
+  companySize?: string;
+  jobTitle?: string;
+  location?: string;
+  careerHistory: Experience[];
+  recentPosts: RecentPost[];
+  icpScore: number;
+  icpScoreBreakdown?: ICPScoreBreakdown;
+  totalExperienceYears?: number;
+  topSkills?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PipelineRecord {
+  id: string;
+  prospectId: string;
+  status: PipelineStatus;
+  visitedAt?: string;
+  connectionSentAt?: string;
+  connectionAcceptedAt?: string;
+  messageSentAt?: string;
+  responseReceivedAt?: string;
+  callBookedAt?: string;
+  dealStatus?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeneratedMessage {
+  id: string;
+  prospectId: string;
+  messageType: MessageType;
+  content: string;
+  generatedAt: string;
+  used: boolean;
+}
+
+export interface ProspectWithPipeline extends Prospect {
+  pipeline?: PipelineRecord;
+  messages?: GeneratedMessage[];
+}
+
+// For Excel import
+export interface RawWorkingRow {
+  'First Name': string;
+  'Last Name': string;
+  'LinkedIn URL': string;
+  'Company': string;
+  'Title': string;
+  'About Summary'?: string;
+  'Visited'?: boolean;
+  'Date Visited'?: string;
+  'Connection Request'?: boolean;
+  'Date'?: string;
+  'Status'?: string;
+  'Connection Accepted'?: boolean;
+  'Message Sent'?: boolean;
+  'Notes / Personalization'?: string;
+}
+
+export interface RawScrapedRow {
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  headline?: string;
+  about?: string;
+  companyName?: string;
+  companyIndustry?: string;
+  companySize?: string;
+  jobTitle?: string;
+  linkedinUrl?: string;
+  totalExperienceYears?: number;
+  topSkillsByEndorsements?: string;
+  addressWithCountry?: string;
+  profilePic?: string;
+  profilePicHighQuality?: string;
+  'experiences/0/companyName'?: string;
+  'experiences/0/title'?: string;
+  'experiences/0/jobDescription'?: string;
+  'experiences/1/companyName'?: string;
+  'experiences/1/title'?: string;
+  'experiences/1/jobDescription'?: string;
+  'experiences/2/companyName'?: string;
+  'experiences/2/title'?: string;
+  'experiences/2/jobDescription'?: string;
+}
+
+// Filter/sort options
+export interface FilterOptions {
+  status?: PipelineStatus | 'all';
+  industry?: string;
+  search?: string;
+  icpScoreMin?: number;
+}
+
+export type SortField = 'name' | 'company' | 'icpScore' | 'lastActivity' | 'status';
+export type SortDirection = 'asc' | 'desc';
