@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { calculateICPScoreWithBreakdown } from '@/lib/import';
+import type { RecentPost, Experience } from '@/types';
 
 const APIFY_TOKEN = process.env.APIFY_API_TOKEN || '';
 const APIFY_ACTOR = process.env.APIFY_ACTOR || 'dev_fusion~linkedin-profile-scraper';
@@ -120,14 +121,12 @@ function mapApifyToProspect(profile: ApifyProfile) {
   const fullName = profile.fullName || `${firstName} ${lastName}`.trim();
 
   // Extract career history from experiences
-  const careerHistory = (profile.experiences || []).slice(0, 5).map(exp => ({
+  const careerHistory: Experience[] = (profile.experiences || []).slice(0, 5).map(exp => ({
     companyName: exp.companyName || exp.company || '',
     title: exp.title || '',
-    location: exp.location || '',
-    startDate: exp.startDate || '',
-    endDate: exp.endDate || '',
     description: exp.jobDescription || exp.description || '',
-    duration: exp.duration || ''
+    startDate: exp.startDate || '',
+    endDate: exp.endDate || ''
   }));
 
   // Get current job from first experience
@@ -150,7 +149,7 @@ function mapApifyToProspect(profile: ApifyProfile) {
     jobTitle: profile.jobTitle || profile.title || profile.position || currentJob?.title || undefined,
     location: profile.location || undefined,
     careerHistory,
-    recentPosts: [] as unknown[],
+    recentPosts: [] as RecentPost[],
     totalExperienceYears: profile.totalExperienceYears || undefined,
     topSkills: profile.topSkillsByEndorsements || profile.skills?.join(', ') || undefined,
   };
