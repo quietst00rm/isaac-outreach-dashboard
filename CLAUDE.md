@@ -108,15 +108,31 @@ Imports profiles via Apify scraper.
 
 ## ICP Scoring Algorithm
 
-Located in `lib/import.ts`. Scores 0-100 based on:
+Located in `lib/import.ts`. Two target segments scored on decision-making authority and scale.
 
-| Category | Max Points | Criteria |
-|----------|------------|----------|
-| Industry | 30 | E-commerce, retail, DTC, fashion, electronics, etc. |
-| Title | 25 | Founder, CEO, Owner, Director, VP, etc. |
-| Agency | 20 | Bonus for Shopify agencies/partners |
-| E-commerce Experience | 15 | Mentions Shopify, DTC, Amazon in about |
-| Profile Completeness | 10 | Has about summary > 100 chars |
+### Segments
+1. **Agency Decision-Makers**: Shopify/e-commerce agencies (10-100 employees ideal)
+2. **Merchant Operators**: DTC brands shipping physical products (10-200 employees ideal)
+
+### Scoring Categories
+
+| Category | Points | Criteria |
+|----------|--------|----------|
+| Title Authority | 0-35 | Decision-maker level (Founder/CEO=35, Director=25, Manager=5) |
+| Company Signals | 0-30 | Shopify Plus (+15), Shopify (+12), DTC (+10), e-commerce (+8) |
+| Company Size Fit | -15 to +20 | Sweet spot: agencies 10-100, merchants 10-200. Penalize solo freelancers and 500+ consultancies |
+| Product Category | 0-10 | Minor boost for electronics, jewelry, supplements, fashion, etc. |
+| Profile Completeness | 0-5 | Has about summary > 100 chars |
+
+### Segment-Specific Title Scoring
+
+**Agency Top Titles** (35 pts): Founder, CEO, Co-founder, Owner, Managing Partner, Director of Partnerships
+
+**Agency Secondary** (25 pts): VP of Client Services, Head of Partnerships, Director of Client Success
+
+**Merchant Top Titles** (35 pts): Founder, CEO, Co-founder, Owner, COO, VP of Operations, Head of Operations
+
+**Merchant Secondary** (25 pts): Operations Manager, Head of Fulfillment, E-commerce Manager
 
 ## Isaac's Voice Profile
 

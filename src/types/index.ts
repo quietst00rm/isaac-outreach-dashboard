@@ -35,11 +35,12 @@ export interface RecentPost {
 }
 
 export interface ICPScoreBreakdown {
-  industry: number;
-  title: number;
-  agency: number;
-  ecommerceExperience: number;
-  profileCompleteness: number;
+  segment: 'agency' | 'merchant' | 'unknown';
+  titleAuthority: number;      // 0-35: Decision-making power
+  companySignals: number;      // 0-30: Shopify/e-commerce keywords
+  companySize: number;         // -15 to +20: Size fit penalty/bonus
+  productCategory: number;     // 0-10: Minor boost for known categories
+  profileCompleteness: number; // 0-5: Has about summary
   total: number;
 }
 

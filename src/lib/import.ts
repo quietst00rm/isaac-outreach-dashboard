@@ -8,75 +8,251 @@ import type {
   ICPScoreBreakdown
 } from '@/types';
 
-// High-value industries for ICP scoring
-const HIGH_VALUE_INDUSTRIES = [
-  'e-commerce', 'retail', 'consumer goods', 'electronics',
-  'jewelry', 'supplements', 'fashion', 'beauty', 'health',
-  'home goods', 'sporting goods', 'pet supplies'
+// ============================================================================
+// ICP SCORING - Two Segments: Agency Decision-Makers & Merchant Operators
+// ============================================================================
+
+// SEGMENT 1: Agency Decision-Makers
+// Keywords that indicate an e-commerce/Shopify agency
+const AGENCY_KEYWORDS = [
+  'shopify', 'shopify plus', 'shopify partner', 'e-commerce agency',
+  'ecommerce agency', 'dtc agency', 'e-commerce development',
+  'ecommerce development', 'shopify agency', 'shopify expert',
+  'e-commerce services', 'ecommerce services', 'digital agency'
 ];
 
-// High-value titles for ICP scoring
-const HIGH_VALUE_TITLES = [
-  'founder', 'ceo', 'owner', 'co-founder', 'president',
-  'director', 'head of', 'vp', 'chief', 'partner'
+// Highest priority agency titles (decision-makers)
+const AGENCY_TOP_TITLES = [
+  'founder', 'ceo', 'co-founder', 'cofounder', 'owner',
+  'managing partner', 'director of partnerships', 'partnerships director'
 ];
 
-// Agency indicators
-const AGENCY_INDICATORS = [
-  'agency', 'partner', 'consultant', 'shopify', 'e-commerce services',
-  'marketing agency', 'digital agency'
+// Secondary priority agency titles
+const AGENCY_SECONDARY_TITLES = [
+  'vp of client services', 'head of partnerships', 'director of client success',
+  'client success director', 'vp client services', 'head of client success',
+  'partner', 'principal'
 ];
+
+// SEGMENT 2: Merchant Operators
+// Keywords that indicate a DTC/e-commerce brand
+const MERCHANT_KEYWORDS = [
+  'shopify', 'dtc', 'direct-to-consumer', 'direct to consumer',
+  'e-commerce brand', 'ecommerce brand', 'd2c', 'online store',
+  'shipping', 'fulfillment', 'physical products', 'consumer brand',
+  'retail brand', 'shopify store', 'bigcommerce', 'woocommerce'
+];
+
+// Highest priority merchant titles (operators with authority)
+const MERCHANT_TOP_TITLES = [
+  'founder', 'ceo', 'co-founder', 'cofounder', 'owner',
+  'coo', 'vp of operations', 'head of operations', 'operations director',
+  'director of operations', 'chief operating'
+];
+
+// Secondary merchant titles
+const MERCHANT_SECONDARY_TITLES = [
+  'vp operations', 'operations manager', 'head of fulfillment',
+  'director of fulfillment', 'supply chain director', 'head of supply chain',
+  'ecommerce manager', 'e-commerce manager', 'head of ecommerce'
+];
+
+// Product categories (minor boost only - often unreliable)
+const PRODUCT_CATEGORIES = [
+  'electronics', 'jewelry', 'supplements', 'vitamins', 'fashion',
+  'apparel', 'beauty', 'cosmetics', 'skincare', 'health',
+  'home goods', 'furniture', 'sporting goods', 'pet supplies',
+  'ceramics', 'premium', 'luxury'
+];
+
+// Parse company size from string like "11-50 employees" or "51-200"
+function parseCompanySize(sizeStr: string | undefined): number | null {
+  if (!sizeStr) return null;
+  const lower = sizeStr.toLowerCase();
+
+  // Handle common LinkedIn formats
+  if (lower.includes('1-10') || lower.includes('2-10') || lower === '1' || lower.includes('self-employed')) return 5;
+  if (lower.includes('11-50')) return 30;
+  if (lower.includes('51-200')) return 100;
+  if (lower.includes('201-500')) return 350;
+  if (lower.includes('501-1000') || lower.includes('500+')) return 750;
+  if (lower.includes('1001-5000') || lower.includes('1000+')) return 2500;
+  if (lower.includes('5001') || lower.includes('10000')) return 7500;
+
+  // Try to parse a number directly
+  const match = lower.match(/(\d+)/);
+  if (match) return parseInt(match[1], 10);
+
+  return null;
+}
 
 export function calculateICPScoreWithBreakdown(prospect: Partial<Prospect>): ICPScoreBreakdown {
   const breakdown: ICPScoreBreakdown = {
-    industry: 0,
-    title: 0,
-    agency: 0,
-    ecommerceExperience: 0,
+    segment: 'unknown',
+    titleAuthority: 0,
+    companySignals: 0,
+    companySize: 0,
+    productCategory: 0,
     profileCompleteness: 0,
     total: 0
   };
 
-  // Industry scoring (0-30 points)
-  const industry = (prospect.companyIndustry || '').toLowerCase();
-  if (HIGH_VALUE_INDUSTRIES.some(i => industry.includes(i))) {
-    breakdown.industry = 30;
-  } else if (industry.includes('technology') || industry.includes('software')) {
-    breakdown.industry = 15;
-  }
-
-  // Title scoring (0-25 points)
   const title = (prospect.jobTitle || prospect.headline || '').toLowerCase();
-  if (HIGH_VALUE_TITLES.some(t => title.includes(t))) {
-    breakdown.title = 25;
-  } else if (title.includes('manager') || title.includes('lead')) {
-    breakdown.title = 10;
-  }
-
-  // Agency detection (bonus 20 points)
   const companyName = (prospect.companyName || '').toLowerCase();
   const about = (prospect.aboutSummary || '').toLowerCase();
-  if (AGENCY_INDICATORS.some(a => companyName.includes(a) || about.includes(a))) {
-    breakdown.agency = 20;
+  const industry = (prospect.companyIndustry || '').toLowerCase();
+  const headline = (prospect.headline || '').toLowerCase();
+  const combinedText = `${companyName} ${about} ${headline} ${industry}`;
+
+  // ============================================================================
+  // STEP 1: Detect segment (Agency vs Merchant)
+  // ============================================================================
+  const isAgency = AGENCY_KEYWORDS.some(kw => combinedText.includes(kw)) &&
+    (companyName.includes('agency') || companyName.includes('partner') ||
+     companyName.includes('consulting') || companyName.includes('digital') ||
+     about.includes('agency') || about.includes('clients'));
+
+  const isMerchant = MERCHANT_KEYWORDS.some(kw => combinedText.includes(kw)) &&
+    !isAgency; // Merchants are NOT agencies
+
+  if (isAgency) {
+    breakdown.segment = 'agency';
+  } else if (isMerchant) {
+    breakdown.segment = 'merchant';
   }
 
-  // E-commerce experience (0-15 points)
-  if (about.includes('shopify') || about.includes('e-commerce') ||
-      about.includes('ecommerce') || about.includes('dtc') ||
-      about.includes('amazon') || about.includes('direct-to-consumer')) {
-    breakdown.ecommerceExperience = 15;
+  // ============================================================================
+  // STEP 2: Score title authority (0-35 points)
+  // ============================================================================
+  if (breakdown.segment === 'agency') {
+    // Agency title scoring
+    if (AGENCY_TOP_TITLES.some(t => title.includes(t))) {
+      breakdown.titleAuthority = 35;
+    } else if (AGENCY_SECONDARY_TITLES.some(t => title.includes(t))) {
+      breakdown.titleAuthority = 25;
+    } else if (title.includes('director') || title.includes('head of') || title.includes('vp')) {
+      breakdown.titleAuthority = 15;
+    } else if (title.includes('manager') || title.includes('lead')) {
+      breakdown.titleAuthority = 5;
+    }
+  } else if (breakdown.segment === 'merchant') {
+    // Merchant title scoring
+    if (MERCHANT_TOP_TITLES.some(t => title.includes(t))) {
+      breakdown.titleAuthority = 35;
+    } else if (MERCHANT_SECONDARY_TITLES.some(t => title.includes(t))) {
+      breakdown.titleAuthority = 25;
+    } else if (title.includes('director') || title.includes('head of') || title.includes('vp')) {
+      breakdown.titleAuthority = 15;
+    } else if (title.includes('manager') || title.includes('lead')) {
+      breakdown.titleAuthority = 5;
+    }
+  } else {
+    // Unknown segment - still score decision-maker titles
+    const allTopTitles = [...new Set([...AGENCY_TOP_TITLES, ...MERCHANT_TOP_TITLES])];
+    if (allTopTitles.some(t => title.includes(t))) {
+      breakdown.titleAuthority = 20; // Lower score for unknown segment
+    } else if (title.includes('director') || title.includes('head of') || title.includes('vp')) {
+      breakdown.titleAuthority = 10;
+    }
   }
 
-  // Has about summary (profile completeness) (0-10 points)
+  // ============================================================================
+  // STEP 3: Score company signals (0-30 points)
+  // ============================================================================
+  let signalScore = 0;
+
+  // Shopify-related signals (highest value)
+  if (combinedText.includes('shopify plus')) signalScore += 15;
+  else if (combinedText.includes('shopify')) signalScore += 12;
+
+  // E-commerce/DTC signals
+  if (combinedText.includes('dtc') || combinedText.includes('d2c') ||
+      combinedText.includes('direct-to-consumer') || combinedText.includes('direct to consumer')) {
+    signalScore += 10;
+  }
+
+  // Other platform signals
+  if (combinedText.includes('e-commerce') || combinedText.includes('ecommerce')) {
+    signalScore += 8;
+  }
+
+  // Shipping/fulfillment signals (for merchants)
+  if (breakdown.segment === 'merchant') {
+    if (combinedText.includes('shipping') || combinedText.includes('fulfillment') ||
+        combinedText.includes('logistics') || combinedText.includes('3pl')) {
+      signalScore += 5;
+    }
+  }
+
+  // Agency-specific signals
+  if (breakdown.segment === 'agency') {
+    if (combinedText.includes('shopify partner') || combinedText.includes('shopify plus partner')) {
+      signalScore += 10;
+    }
+  }
+
+  breakdown.companySignals = Math.min(signalScore, 30);
+
+  // ============================================================================
+  // STEP 4: Score company size (-15 to +20 points)
+  // ============================================================================
+  const companySize = parseCompanySize(prospect.companySize);
+
+  if (companySize !== null) {
+    if (breakdown.segment === 'agency') {
+      // Agency sweet spot: 10-100 employees
+      if (companySize >= 10 && companySize <= 100) {
+        breakdown.companySize = 20; // Perfect fit
+      } else if (companySize > 100 && companySize <= 200) {
+        breakdown.companySize = 10; // Still good
+      } else if (companySize > 200 && companySize <= 500) {
+        breakdown.companySize = 0; // Neutral
+      } else if (companySize > 500) {
+        breakdown.companySize = -15; // Too big (large consultancy)
+      } else if (companySize < 10 && companySize >= 2) {
+        breakdown.companySize = 5; // Small but okay
+      } else if (companySize === 1) {
+        breakdown.companySize = -10; // Solo freelancer
+      }
+    } else if (breakdown.segment === 'merchant') {
+      // Merchant sweet spot: 10-200 employees
+      if (companySize >= 10 && companySize <= 200) {
+        breakdown.companySize = 20; // Perfect fit
+      } else if (companySize > 200 && companySize <= 500) {
+        breakdown.companySize = 10; // Still good
+      } else if (companySize > 500) {
+        breakdown.companySize = 0; // Large enterprise, may have different needs
+      } else if (companySize < 10 && companySize >= 2) {
+        breakdown.companySize = 5; // Small but growing
+      } else if (companySize === 1) {
+        breakdown.companySize = -5; // Very small
+      }
+    }
+  }
+
+  // ============================================================================
+  // STEP 5: Product category boost (0-10 points) - Minor factor
+  // ============================================================================
+  if (PRODUCT_CATEGORIES.some(cat => combinedText.includes(cat))) {
+    breakdown.productCategory = 10;
+  }
+
+  // ============================================================================
+  // STEP 6: Profile completeness (0-5 points)
+  // ============================================================================
   if (prospect.aboutSummary && prospect.aboutSummary.length > 100) {
-    breakdown.profileCompleteness = 10;
+    breakdown.profileCompleteness = 5;
   }
 
-  breakdown.total = Math.min(
-    breakdown.industry + breakdown.title + breakdown.agency +
-    breakdown.ecommerceExperience + breakdown.profileCompleteness,
-    100
-  );
+  // ============================================================================
+  // FINAL SCORE
+  // ============================================================================
+  const rawTotal = breakdown.titleAuthority + breakdown.companySignals +
+                   breakdown.companySize + breakdown.productCategory +
+                   breakdown.profileCompleteness;
+
+  // Clamp to 0-100
+  breakdown.total = Math.max(0, Math.min(100, rawTotal));
 
   return breakdown;
 }

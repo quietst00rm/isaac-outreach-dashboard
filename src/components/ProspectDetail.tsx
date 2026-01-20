@@ -187,28 +187,43 @@ export function ProspectDetail({
                 {/* ICP Breakdown */}
                 {showICPBreakdown && icpBreakdown && (
                   <div className="mt-4 space-y-2 text-sm">
+                    {/* Segment Badge */}
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-600">Industry Match</span>
-                      <span className={`font-medium ${icpBreakdown.industry > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                        +{icpBreakdown.industry} pts
+                      <span className="text-gray-600">Segment</span>
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        icpBreakdown.segment === 'agency' ? 'bg-purple-100 text-purple-700' :
+                        icpBreakdown.segment === 'merchant' ? 'bg-blue-100 text-blue-700' :
+                        'bg-gray-100 text-gray-500'
+                      }`}>
+                        {icpBreakdown.segment === 'agency' ? 'Agency' :
+                         icpBreakdown.segment === 'merchant' ? 'Merchant' : 'Unknown'}
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-600">Title/Role</span>
-                      <span className={`font-medium ${icpBreakdown.title > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                        +{icpBreakdown.title} pts
+                      <span className="text-gray-600">Title Authority</span>
+                      <span className={`font-medium ${icpBreakdown.titleAuthority > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                        +{icpBreakdown.titleAuthority} pts
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-600">Agency Indicator</span>
-                      <span className={`font-medium ${icpBreakdown.agency > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                        +{icpBreakdown.agency} pts
+                      <span className="text-gray-600">Company Signals</span>
+                      <span className={`font-medium ${icpBreakdown.companySignals > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                        +{icpBreakdown.companySignals} pts
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-600">E-commerce Experience</span>
-                      <span className={`font-medium ${icpBreakdown.ecommerceExperience > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                        +{icpBreakdown.ecommerceExperience} pts
+                      <span className="text-gray-600">Company Size Fit</span>
+                      <span className={`font-medium ${
+                        icpBreakdown.companySize > 0 ? 'text-green-600' :
+                        icpBreakdown.companySize < 0 ? 'text-red-500' : 'text-gray-400'
+                      }`}>
+                        {icpBreakdown.companySize >= 0 ? '+' : ''}{icpBreakdown.companySize} pts
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Product Category</span>
+                      <span className={`font-medium ${icpBreakdown.productCategory > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                        +{icpBreakdown.productCategory} pts
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
