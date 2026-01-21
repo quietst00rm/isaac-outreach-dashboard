@@ -132,7 +132,17 @@ Write a SHORT (15-25 words max) comment now:`;
 
   const content = response.choices[0]?.message?.content;
   if (content) {
-    return content.trim();
+    // Remove any surrounding quotes that GPT might add
+    let cleaned = content.trim();
+    // Remove leading/trailing double quotes
+    if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+      cleaned = cleaned.slice(1, -1);
+    }
+    // Remove leading/trailing single quotes
+    if (cleaned.startsWith("'") && cleaned.endsWith("'")) {
+      cleaned = cleaned.slice(1, -1);
+    }
+    return cleaned.trim();
   }
 
   throw new Error('Unexpected response format from OpenAI');
