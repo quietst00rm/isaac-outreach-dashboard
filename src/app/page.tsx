@@ -776,17 +776,8 @@ export default function Dashboard() {
                 {selectionMode ? 'Cancel Select' : 'Select'}
               </button>
               <button
-                onClick={() => setShowAddModal(true)}
-                className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add Prospect
-              </button>
-              <button
                 onClick={() => setShowBulkUrlModal(true)}
-                className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
@@ -802,39 +793,6 @@ export default function Dashboard() {
                 </svg>
                 Engagement
               </Link>
-              <button
-                onClick={() => setShowImportModal(true)}
-                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                Import Excel
-              </button>
-              {useSupabase && (
-                <button
-                  onClick={handleRecalculateICP}
-                  disabled={isRecalculatingICP}
-                  className="inline-flex items-center px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isRecalculatingICP ? (
-                    <>
-                      <svg className="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      Recalculating...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Recalculate ICP
-                    </>
-                  )}
-                </button>
-              )}
             </div>
           </div>
         </div>
@@ -1011,11 +969,40 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Showing count */}
-            <div className="text-sm text-gray-500">
-              Showing {filteredProspects.length} of {prospects.length} prospects
-              {(filters.status !== 'all' || filters.segment !== 'all' || icpRange !== 'all' || filters.search) && (
-                <span className="ml-2 text-blue-600">(filtered)</span>
+            {/* Showing count + Recalculate ICP */}
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-500">
+                Showing {filteredProspects.length} of {prospects.length} prospects
+                {(filters.status !== 'all' || filters.segment !== 'all' || icpRange !== 'all' || filters.search) && (
+                  <span className="ml-2 text-blue-600">(filtered)</span>
+                )}
+              </div>
+
+              {/* Recalculate ICP - Less prominent location */}
+              {useSupabase && (
+                <button
+                  onClick={handleRecalculateICP}
+                  disabled={isRecalculatingICP}
+                  className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Recalculate ICP scores for all prospects"
+                >
+                  {isRecalculatingICP ? (
+                    <>
+                      <svg className="animate-spin w-3.5 h-3.5 mr-1.5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Recalculating...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Recalculate ICP
+                    </>
+                  )}
+                </button>
               )}
             </div>
           </div>
