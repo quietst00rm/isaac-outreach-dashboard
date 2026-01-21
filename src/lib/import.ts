@@ -21,13 +21,40 @@ const AGENCY_KEYWORDS = [
   'e-commerce services', 'ecommerce services', 'digital agency'
 ];
 
+// ============================================================================
+// TITLE AUTHORITY MATCHING
+// ============================================================================
+//
+// CRITICAL BUG FIX (2026-01-20):
+// Previous logic used simple .includes() matching, which failed for:
+// - "Chief Executive Officer" (doesn't contain "ceo")
+// - "Chief Operating Officer" (doesn't contain "coo")
+// - Title variations like "CEO & Founder", "Co-Founder & CEO"
+//
+// NEW LOGIC: We now match against full spelled-out titles AND abbreviations.
+// All title matching is case-insensitive (titles are lowercased before comparison).
+// ============================================================================
+
 // Highest priority agency titles (decision-makers)
+// These all score +40 points
 const AGENCY_TOP_TITLES = [
-  'founder', 'ceo', 'co-founder', 'cofounder', 'owner',
-  'managing partner', 'director of partnerships', 'partnerships director'
+  // CEO variations
+  'ceo', 'chief executive officer', 'chief executive',
+  // Founder variations
+  'founder', 'co-founder', 'cofounder', 'co founder',
+  // Owner
+  'owner',
+  // COO variations
+  'coo', 'chief operating officer', 'chief operating',
+  // President (when it implies CEO-level authority)
+  'president',
+  // Managing Partner
+  'managing partner',
+  // Partnership roles for agencies
+  'director of partnerships', 'partnerships director'
 ];
 
-// Secondary priority agency titles
+// Secondary priority agency titles (+30 points)
 const AGENCY_SECONDARY_TITLES = [
   'vp of client services', 'head of partnerships', 'director of client success',
   'client success director', 'vp client services', 'head of client success',
@@ -44,17 +71,31 @@ const MERCHANT_KEYWORDS = [
 ];
 
 // Highest priority merchant titles (operators with authority)
+// These all score +40 points
 const MERCHANT_TOP_TITLES = [
-  'founder', 'ceo', 'co-founder', 'cofounder', 'owner',
-  'coo', 'vp of operations', 'head of operations', 'operations director',
-  'director of operations', 'chief operating'
+  // CEO variations
+  'ceo', 'chief executive officer', 'chief executive',
+  // Founder variations
+  'founder', 'co-founder', 'cofounder', 'co founder',
+  // Owner
+  'owner',
+  // COO variations
+  'coo', 'chief operating officer', 'chief operating',
+  // President
+  'president',
+  // Operations leadership (critical for merchants)
+  'vp of operations', 'vp operations', 'vice president of operations',
+  'head of operations', 'operations director', 'director of operations',
+  // E-commerce leadership
+  'head of e-commerce', 'head of ecommerce', 'vp of e-commerce', 'vp of ecommerce',
+  'director of e-commerce', 'director of ecommerce'
 ];
 
-// Secondary merchant titles
+// Secondary merchant titles (+30 points for merchants, +25 for agencies)
 const MERCHANT_SECONDARY_TITLES = [
-  'vp operations', 'operations manager', 'head of fulfillment',
+  'operations manager', 'head of fulfillment',
   'director of fulfillment', 'supply chain director', 'head of supply chain',
-  'ecommerce manager', 'e-commerce manager', 'head of ecommerce'
+  'ecommerce manager', 'e-commerce manager'
 ];
 
 // Product categories (minor boost only - often unreliable)
@@ -131,19 +172,37 @@ export function calculateICPScoreWithBreakdown(prospect: Partial<Prospect>): ICP
   // ============================================================================
   // STEP 2: Score title authority (0-40 points)
   // Decision-maker titles are the primary scoring factor
+  //
+  // MATCHING LOGIC:
+  // - All titles are lowercased before comparison
+  // - We check if ANY of the target title patterns appear in the full title string
+  // - This handles compound titles like "CEO & Founder", "Co-Founder & CEO", etc.
+  // - Both abbreviations (CEO) and full forms (Chief Executive Officer) are matched
   // ============================================================================
   const allTopTitles = [...new Set([...AGENCY_TOP_TITLES, ...MERCHANT_TOP_TITLES])];
   const allSecondaryTitles = [...new Set([...AGENCY_SECONDARY_TITLES, ...MERCHANT_SECONDARY_TITLES])];
 
+  // Helper function to check if a title matches any pattern in the list
+  // This is more robust than simple includes() for edge cases
+  const matchesAnyTitle = (titleStr: string, patterns: string[]): boolean => {
+    const normalizedTitle = titleStr.toLowerCase().trim();
+    return patterns.some(pattern => {
+      const normalizedPattern = pattern.toLowerCase().trim();
+      // Check if the pattern appears in the title
+      // This handles "CEO & Founder", "Chief Executive Officer at Company", etc.
+      return normalizedTitle.includes(normalizedPattern);
+    });
+  };
+
   // Score titles the same regardless of segment - title authority is universal
-  if (allTopTitles.some(t => title.includes(t))) {
-    breakdown.titleAuthority = 40; // Increased from 35
-  } else if (allSecondaryTitles.some(t => title.includes(t))) {
-    breakdown.titleAuthority = 30; // Increased from 25
-  } else if (title.includes('director') || title.includes('head of') || title.includes('vp')) {
-    breakdown.titleAuthority = 20; // Increased from 15
+  if (matchesAnyTitle(title, allTopTitles)) {
+    breakdown.titleAuthority = 40;
+  } else if (matchesAnyTitle(title, allSecondaryTitles)) {
+    breakdown.titleAuthority = 30;
+  } else if (title.includes('director') || title.includes('head of') || title.includes('vp') || title.includes('vice president')) {
+    breakdown.titleAuthority = 20;
   } else if (title.includes('manager') || title.includes('lead') || title.includes('senior')) {
-    breakdown.titleAuthority = 10; // Increased from 5
+    breakdown.titleAuthority = 10;
   }
 
   // ============================================================================
@@ -482,4 +541,153 @@ export function parseExcelFromBuffer(buffer: Buffer): {
     prospects: Array.from(scrapedProspects.values()),
     pipelineData: pipelineData
   };
+}
+
+// ============================================================================
+// TEST FUNCTION: Validate Title Authority Scoring
+// ============================================================================
+// Run this function to verify that title matching works correctly.
+// Call testTitleScoring() from browser console or use in a test file.
+// ============================================================================
+
+interface TitleTestCase {
+  title: string;
+  expectedScore: number;
+  segment?: 'merchant' | 'agency';
+}
+
+export function testTitleScoring(): void {
+  const testCases: TitleTestCase[] = [
+    // CEO variations - should all be +40
+    { title: 'Chief Executive Officer', expectedScore: 40 },
+    { title: 'CEO', expectedScore: 40 },
+    { title: 'ceo', expectedScore: 40 },
+    { title: 'CEO & Founder', expectedScore: 40 },
+    { title: 'Co-Founder & CEO', expectedScore: 40 },
+    { title: 'CEO/Founder', expectedScore: 40 },
+    { title: 'President & CEO', expectedScore: 40 },
+    { title: 'Chief Executive Officer at TRUEWERK', expectedScore: 40 },
+    { title: 'Chief Executive Officer at Marquee Brands', expectedScore: 40 },
+
+    // Founder variations - should all be +40
+    { title: 'Founder', expectedScore: 40 },
+    { title: 'Co-Founder', expectedScore: 40 },
+    { title: 'Co-founder', expectedScore: 40 },
+    { title: 'Cofounder', expectedScore: 40 },
+    { title: 'Founder & CEO', expectedScore: 40 },
+
+    // COO variations - should all be +40
+    { title: 'COO', expectedScore: 40 },
+    { title: 'Chief Operating Officer', expectedScore: 40 },
+    { title: 'COO & Co-Founder', expectedScore: 40 },
+
+    // Operations leadership for Merchants - should be +40
+    { title: 'VP of Operations', expectedScore: 40 },
+    { title: 'VP Operations', expectedScore: 40 },
+    { title: 'Vice President of Operations', expectedScore: 40 },
+    { title: 'Head of Operations', expectedScore: 40 },
+    { title: 'Director of Operations', expectedScore: 40 },
+
+    // E-commerce leadership for Merchants - should be +40
+    { title: 'Head of E-commerce', expectedScore: 40 },
+    { title: 'Head of Ecommerce', expectedScore: 40 },
+    { title: 'VP of E-commerce', expectedScore: 40 },
+    { title: 'Director of E-commerce', expectedScore: 40 },
+
+    // Other top titles - should be +40
+    { title: 'Owner', expectedScore: 40 },
+    { title: 'President', expectedScore: 40 },
+    { title: 'Managing Partner', expectedScore: 40 },
+
+    // Secondary titles - should be +30
+    { title: 'Operations Manager', expectedScore: 30 },
+    { title: 'Head of Fulfillment', expectedScore: 30 },
+    { title: 'Supply Chain Director', expectedScore: 30 },
+    { title: 'E-commerce Manager', expectedScore: 30 },
+    { title: 'Partner', expectedScore: 30 },
+    { title: 'Principal', expectedScore: 30 },
+
+    // Tertiary titles - should be +20
+    { title: 'Director of Marketing', expectedScore: 20 },
+    { title: 'Head of Sales', expectedScore: 20 },
+    { title: 'VP of Sales', expectedScore: 20 },
+
+    // Lower authority - should be +10
+    { title: 'Marketing Manager', expectedScore: 10 },
+    { title: 'Sales Lead', expectedScore: 10 },
+    { title: 'Senior Developer', expectedScore: 10 },
+
+    // No match - should be 0
+    { title: 'Software Engineer', expectedScore: 0 },
+    { title: 'Analyst', expectedScore: 0 },
+  ];
+
+  console.log('========================================');
+  console.log('TITLE AUTHORITY SCORING TEST RESULTS');
+  console.log('========================================\n');
+
+  let passed = 0;
+  let failed = 0;
+
+  for (const testCase of testCases) {
+    // Create a minimal prospect with just the title
+    const prospect: Partial<Prospect> = {
+      jobTitle: testCase.title,
+      headline: '',
+      companyName: testCase.segment === 'agency' ? 'Test Agency' : 'Test Company',
+      aboutSummary: testCase.segment === 'agency'
+        ? 'We are a Shopify agency helping clients'
+        : 'DTC brand selling products on Shopify',
+      companyIndustry: '',
+      companySize: '11-50'
+    };
+
+    const breakdown = calculateICPScoreWithBreakdown(prospect);
+    const actualScore = breakdown.titleAuthority;
+    const status = actualScore === testCase.expectedScore ? '✓ PASS' : '✗ FAIL';
+
+    if (actualScore === testCase.expectedScore) {
+      passed++;
+    } else {
+      failed++;
+    }
+
+    console.log(`${status} | "${testCase.title}"`);
+    console.log(`       Expected: ${testCase.expectedScore} pts | Actual: ${actualScore} pts`);
+    if (actualScore !== testCase.expectedScore) {
+      console.log(`       Segment detected: ${breakdown.segment}`);
+    }
+    console.log('');
+  }
+
+  console.log('========================================');
+  console.log(`SUMMARY: ${passed} passed, ${failed} failed`);
+  console.log('========================================');
+
+  // Also test the specific bug cases mentioned
+  console.log('\n========================================');
+  console.log('BUG FIX VERIFICATION');
+  console.log('========================================');
+
+  const bugCases = [
+    { name: 'Glenn Silbert', title: 'Chief Executive Officer', company: 'TRUEWERK' },
+    { name: 'Heath Golden', title: 'Chief Executive Officer', company: 'Marquee Brands' },
+  ];
+
+  for (const bugCase of bugCases) {
+    const prospect: Partial<Prospect> = {
+      fullName: bugCase.name,
+      jobTitle: bugCase.title,
+      companyName: bugCase.company,
+      aboutSummary: 'DTC brand selling products on Shopify',
+      companySize: '11-50'
+    };
+
+    const breakdown = calculateICPScoreWithBreakdown(prospect);
+    console.log(`\n${bugCase.name} - ${bugCase.title} at ${bugCase.company}`);
+    console.log(`  Title Authority: ${breakdown.titleAuthority} pts (expected: 40)`);
+    console.log(`  Segment: ${breakdown.segment}`);
+    console.log(`  Total ICP Score: ${breakdown.total}`);
+    console.log(`  Status: ${breakdown.titleAuthority === 40 ? '✓ FIXED' : '✗ STILL BROKEN'}`);
+  }
 }
