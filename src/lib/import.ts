@@ -372,39 +372,127 @@ export function calculateICPScoreWithBreakdown(prospect: Partial<Prospect>): ICP
   // ============================================================================
   // STEP 3: Score company signals (0-35 points)
   // ============================================================================
+  //
+  // IMPROVED (2026-01-20): Better detection of scale indicators and platform mentions.
+  // Previous logic undervalued high-volume merchants like "tens of millions of customers".
+  //
+  // Signal categories:
+  // - SCALE INDICATORS: +15 pts (millions of customers, revenue mentions, etc.)
+  // - PLATFORM SIGNALS: +12 pts (Shopify Plus, Amazon FBA, etc.)
+  // - DTC/ECOMMERCE: +10 pts (direct-to-consumer, online store, etc.)
+  // - INDUSTRY BONUS: +10 pts (Merchant in Retail/Consumer Goods industry)
+  // - GENERAL COMMERCE: +5 pts (brand, retail, etc.)
+  // ============================================================================
   let signalScore = 0;
 
-  // Shopify-related signals (highest value)
-  if (combinedText.includes('shopify plus')) signalScore += 18;
-  else if (combinedText.includes('shopify')) signalScore += 15;
+  // ---------------------------------------------------------------------------
+  // SCALE INDICATORS - High value, indicates significant business volume
+  // ---------------------------------------------------------------------------
+  const scaleIndicators = [
+    'millions of customers', 'million customers', 'tens of millions',
+    'hundreds of thousands', 'million units', 'millions sold',
+    '$1m', '$2m', '$5m', '$10m', '$20m', '$50m', '$100m',
+    '1 million', '2 million', '5 million', '10 million',
+    'million in revenue', 'million revenue',
+    '7-figure', '8-figure', '9-figure', 'seven figure', 'eight figure', 'nine figure',
+    'seven-figure', 'eight-figure', 'nine-figure',
+    'bestseller', 'best seller', 'best-seller', 'top seller', 'top-seller',
+    '#1 seller', 'number one', '#1 brand',
+    'inc 5000', 'inc. 5000', 'inc5000', 'fastest growing',
+    'fortune 500', 'fortune 1000'
+  ];
 
-  // E-commerce/DTC signals
-  if (combinedText.includes('dtc') || combinedText.includes('d2c') ||
-      combinedText.includes('direct-to-consumer') || combinedText.includes('direct to consumer')) {
-    signalScore += 12;
+  if (scaleIndicators.some(indicator => combinedText.includes(indicator))) {
+    signalScore += 15;
   }
 
-  // Other platform signals
-  if (combinedText.includes('e-commerce') || combinedText.includes('ecommerce')) {
+  // ---------------------------------------------------------------------------
+  // PLATFORM SIGNALS - High value, indicates specific e-commerce platform usage
+  // ---------------------------------------------------------------------------
+  // Shopify Plus is highest tier
+  if (combinedText.includes('shopify plus')) {
+    signalScore += 12;
+  } else if (combinedText.includes('shopify')) {
     signalScore += 10;
   }
 
-  // Shipping/fulfillment signals (relevant for both segments)
-  if (combinedText.includes('shipping') || combinedText.includes('fulfillment') ||
-      combinedText.includes('logistics') || combinedText.includes('3pl')) {
+  // Amazon signals
+  if (combinedText.includes('amazon seller') || combinedText.includes('amazon fba') ||
+      combinedText.includes('selling on amazon') || combinedText.includes('amazon brand') ||
+      combinedText.includes('amazon store')) {
+    signalScore += 10;
+  }
+
+  // Other platforms
+  if (combinedText.includes('bigcommerce')) signalScore += 8;
+  if (combinedText.includes('woocommerce')) signalScore += 6;
+  if (combinedText.includes('magento')) signalScore += 6;
+
+  // ---------------------------------------------------------------------------
+  // DTC / E-COMMERCE SIGNALS - Medium value
+  // ---------------------------------------------------------------------------
+  if (combinedText.includes('dtc') || combinedText.includes('d2c') ||
+      combinedText.includes('direct-to-consumer') || combinedText.includes('direct to consumer')) {
+    signalScore += 10;
+  }
+
+  if (combinedText.includes('e-commerce') || combinedText.includes('ecommerce') ||
+      combinedText.includes('e commerce')) {
     signalScore += 8;
   }
 
-  // Agency-specific signals
+  if (combinedText.includes('online store') || combinedText.includes('online brand') ||
+      combinedText.includes('online shop')) {
+    signalScore += 6;
+  }
+
+  // ---------------------------------------------------------------------------
+  // FULFILLMENT / LOGISTICS SIGNALS - Medium value for merchants
+  // ---------------------------------------------------------------------------
+  if (breakdown.segment === 'merchant') {
+    if (combinedText.includes('shipping') || combinedText.includes('fulfillment') ||
+        combinedText.includes('warehouse') || combinedText.includes('logistics') ||
+        combinedText.includes('3pl') || combinedText.includes('supply chain')) {
+      signalScore += 8;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // INDUSTRY BONUS - For merchants in high-value retail industries
+  // ---------------------------------------------------------------------------
+  const highValueMerchantIndustries = [
+    'retail', 'consumer goods', 'apparel', 'fashion', 'food & beverages',
+    'food and beverages', 'health', 'wellness', 'fitness', 'sporting goods',
+    'jewelry', 'cosmetics', 'beauty', 'home goods', 'furniture', 'electronics'
+  ];
+
+  if (breakdown.segment === 'merchant' &&
+      highValueMerchantIndustries.some(ind => industry.includes(ind))) {
+    signalScore += 10;
+  }
+
+  // ---------------------------------------------------------------------------
+  // AGENCY-SPECIFIC SIGNALS
+  // ---------------------------------------------------------------------------
   if (breakdown.segment === 'agency') {
     if (combinedText.includes('shopify partner') || combinedText.includes('shopify plus partner')) {
       signalScore += 12;
     }
+    if (combinedText.includes('clients') && combinedText.includes('brands')) {
+      signalScore += 5;
+    }
   }
 
-  // General commerce signals
-  if (combinedText.includes('retail') || combinedText.includes('online store') ||
-      combinedText.includes('brand') || combinedText.includes('merchant')) {
+  // ---------------------------------------------------------------------------
+  // GENERAL COMMERCE SIGNALS - Low value, common terms
+  // ---------------------------------------------------------------------------
+  if (combinedText.includes('brand') || combinedText.includes('products') ||
+      combinedText.includes('customers served') || combinedText.includes('customer base')) {
+    signalScore += 5;
+  }
+
+  if (combinedText.includes('physical products') || combinedText.includes('consumer brand') ||
+      combinedText.includes('retail brand')) {
     signalScore += 5;
   }
 
