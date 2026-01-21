@@ -31,6 +31,9 @@ export default function EngagementPage() {
   const [watchedProfiles, setWatchedProfiles] = useState<WatchedProfileWithProspect[]>([]);
   const [newProfileUrl, setNewProfileUrl] = useState('');
   const [isAddingProfile, setIsAddingProfile] = useState(false);
+  const [showBulkAdd, setShowBulkAdd] = useState(false);
+  const [bulkUrls, setBulkUrls] = useState('');
+  const [isBulkAdding, setIsBulkAdding] = useState(false);
 
   // Engagement posts
   const [activePosts, setActivePosts] = useState<EngagementPostWithProspect[]>([]);
@@ -111,6 +114,44 @@ export default function EngagementPage() {
       alert('Failed to add profile');
     } finally {
       setIsAddingProfile(false);
+    }
+  };
+
+  // Bulk add watched profiles
+  const handleBulkAdd = async () => {
+    const urls = bulkUrls
+      .split('\n')
+      .map(url => url.trim())
+      .filter(url => url.length > 0 && url.includes('linkedin.com'));
+
+    if (urls.length === 0) {
+      alert('No valid LinkedIn URLs found. Paste one URL per line.');
+      return;
+    }
+
+    setIsBulkAdding(true);
+    try {
+      const res = await fetch('/api/engagement/watched-profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkedinUrls: urls })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setBulkUrls('');
+        setShowBulkAdd(false);
+        await fetchWatchedProfiles();
+        alert(`Added ${data.added} profiles${data.failed > 0 ? `, ${data.failed} failed` : ''}`);
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to add profiles');
+      }
+    } catch (error) {
+      console.error('Error bulk adding profiles:', error);
+      alert('Failed to add profiles');
+    } finally {
+      setIsBulkAdding(false);
     }
   };
 
@@ -300,6 +341,15 @@ export default function EngagementPage() {
                   Add
                 </>
               )}
+            </button>
+            <button
+              onClick={() => setShowBulkAdd(true)}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center"
+            >
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Bulk Add
             </button>
           </div>
 
@@ -558,6 +608,71 @@ export default function EngagementPage() {
           )}
         </section>
       </main>
+
+      {/* Bulk Add Modal */}
+      {showBulkAdd && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4">
+            <div className="p-4 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-gray-900">Bulk Add Profiles</h2>
+                <button
+                  onClick={() => {
+                    setShowBulkAdd(false);
+                    setBulkUrls('');
+                  }}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 mt-1">
+                Paste LinkedIn profile URLs, one per line
+              </p>
+            </div>
+
+            <div className="p-4">
+              <textarea
+                value={bulkUrls}
+                onChange={(e) => setBulkUrls(e.target.value)}
+                placeholder="https://www.linkedin.com/in/person1&#10;https://www.linkedin.com/in/person2&#10;https://www.linkedin.com/in/person3"
+                className="w-full h-48 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                {bulkUrls.split('\n').filter(url => url.trim() && url.includes('linkedin.com')).length} valid URLs detected
+              </p>
+            </div>
+
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowBulkAdd(false);
+                  setBulkUrls('');
+                }}
+                className="px-4 py-2 text-gray-700 hover:text-gray-900"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkAdd}
+                disabled={isBulkAdding || !bulkUrls.trim()}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+              >
+                {isBulkAdding ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Adding...
+                  </>
+                ) : (
+                  'Add All'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

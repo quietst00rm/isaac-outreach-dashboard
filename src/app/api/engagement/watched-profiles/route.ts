@@ -21,23 +21,52 @@ export async function GET() {
   }
 }
 
-// POST - Add a watched profile
+// POST - Add watched profile(s) - supports single or bulk
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { prospectId, linkedinUrl } = body as { prospectId?: string; linkedinUrl?: string };
+    const { prospectId, linkedinUrl, linkedinUrls } = body as {
+      prospectId?: string;
+      linkedinUrl?: string;
+      linkedinUrls?: string[];
+    };
 
+    // Bulk import
+    if (linkedinUrls && Array.isArray(linkedinUrls) && linkedinUrls.length > 0) {
+      const results = [];
+      const errors = [];
+
+      for (const url of linkedinUrls) {
+        const trimmedUrl = url.trim();
+        if (!trimmedUrl) continue;
+
+        try {
+          const result = await addWatchedProfileByUrl(trimmedUrl);
+          results.push(transformWatchedProfile(result as Record<string, unknown>));
+        } catch (err) {
+          errors.push({ url: trimmedUrl, error: String(err) });
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        added: results.length,
+        failed: errors.length,
+        profiles: results,
+        errors: errors.length > 0 ? errors : undefined
+      });
+    }
+
+    // Single add
     let result;
 
     if (prospectId) {
-      // Add by prospect ID
       result = await addWatchedProfile(prospectId);
     } else if (linkedinUrl) {
-      // Add by LinkedIn URL (will find or create prospect)
       result = await addWatchedProfileByUrl(linkedinUrl);
     } else {
       return NextResponse.json(
-        { error: 'Either prospectId or linkedinUrl is required' },
+        { error: 'Either prospectId, linkedinUrl, or linkedinUrls is required' },
         { status: 400 }
       );
     }
