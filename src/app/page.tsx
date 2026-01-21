@@ -24,6 +24,7 @@ export default function Dashboard() {
   const [showBulkUrlModal, setShowBulkUrlModal] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isRecalculatingICP, setIsRecalculatingICP] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>({
     status: 'all',
     search: '',
@@ -372,6 +373,44 @@ export default function Dashboard() {
     }
   };
 
+  const handleRecalculateICP = async () => {
+    if (!useSupabase) {
+      alert('ICP recalculation requires Supabase to be configured.');
+      return;
+    }
+
+    if (!confirm('This will recalculate ICP scores for all prospects using the new algorithm. Continue?')) {
+      return;
+    }
+
+    setIsRecalculatingICP(true);
+
+    try {
+      const response = await fetch('/api/prospects/recalculate-icp', {
+        method: 'POST',
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to recalculate ICP scores');
+      }
+
+      alert(`Successfully recalculated ICP scores for ${result.updated} prospects.`);
+
+      // Reload prospects to get updated scores
+      const data = await getProspects();
+      const transformed = transformDbToApp(data) as ProspectWithPipeline[];
+      setProspects(transformed);
+
+    } catch (error) {
+      console.error('Error recalculating ICP scores:', error);
+      alert('Failed to recalculate ICP scores. Check console for details.');
+    } finally {
+      setIsRecalculatingICP(false);
+    }
+  };
+
   const handleGenerateMessages = async () => {
     if (!selectedProspect) return;
 
@@ -524,6 +563,30 @@ export default function Dashboard() {
                 </svg>
                 Import Excel
               </button>
+              {useSupabase && (
+                <button
+                  onClick={handleRecalculateICP}
+                  disabled={isRecalculatingICP}
+                  className="inline-flex items-center px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isRecalculatingICP ? (
+                    <>
+                      <svg className="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Recalculating...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Recalculate ICP
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>
