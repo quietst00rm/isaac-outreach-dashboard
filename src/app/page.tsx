@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ProspectCard, ProspectDetail, ImportModal, PipelineBoard, AddProspectModal, BulkUrlImportModal } from '@/components';
 import type { ProspectWithPipeline, PipelineStatus, Prospect, PipelineRecord, FilterOptions, SegmentFilter } from '@/types';
@@ -14,8 +15,13 @@ import {
 } from '@/lib/supabase';
 
 type ViewMode = 'grid' | 'pipeline';
+type SortOption = 'icp_desc' | 'icp_asc' | 'name_asc' | 'recent';
+type ICPRange = 'all' | 'high' | 'medium' | 'low';
 
 export default function Dashboard() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [prospects, setProspects] = useState<ProspectWithPipeline[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [useSupabase, setUseSupabase] = useState(false);
@@ -29,11 +35,46 @@ export default function Dashboard() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const [sortBy, setSortBy] = useState<SortOption>('icp_desc');
+  const [icpRange, setIcpRange] = useState<ICPRange>('all');
   const [filters, setFilters] = useState<FilterOptions>({
     status: 'all',
     segment: 'all',
     search: '',
   });
+
+  // Initialize filters from URL params
+  useEffect(() => {
+    const status = searchParams.get('status') as PipelineStatus | 'all' | null;
+    const segment = searchParams.get('segment') as SegmentFilter | null;
+    const sort = searchParams.get('sort') as SortOption | null;
+    const icp = searchParams.get('icp') as ICPRange | null;
+    const search = searchParams.get('search');
+
+    if (status || segment || search) {
+      setFilters(prev => ({
+        ...prev,
+        status: status || 'all',
+        segment: segment || 'all',
+        search: search || '',
+      }));
+    }
+    if (sort) setSortBy(sort);
+    if (icp) setIcpRange(icp);
+  }, [searchParams]);
+
+  // Update URL when filters change
+  const updateUrlParams = useCallback((newFilters: FilterOptions, newSort: SortOption, newIcpRange: ICPRange) => {
+    const params = new URLSearchParams();
+    if (newFilters.status && newFilters.status !== 'all') params.set('status', newFilters.status);
+    if (newFilters.segment && newFilters.segment !== 'all') params.set('segment', newFilters.segment);
+    if (newFilters.search) params.set('search', newFilters.search);
+    if (newSort !== 'icp_desc') params.set('sort', newSort);
+    if (newIcpRange !== 'all') params.set('icp', newIcpRange);
+
+    const queryString = params.toString();
+    router.replace(queryString ? `?${queryString}` : '/', { scroll: false });
+  }, [router]);
 
   // Check for Supabase and load data on mount
   useEffect(() => {
@@ -57,9 +98,9 @@ export default function Dashboard() {
     loadData();
   }, []);
 
-  // Filter and search prospects
+  // Filter, search, and sort prospects
   const filteredProspects = useMemo(() => {
-    return prospects.filter((prospect) => {
+    let result = prospects.filter((prospect) => {
       // Status filter
       if (filters.status && filters.status !== 'all') {
         const prospectStatus = prospect.pipeline?.status || 'not_contacted';
@@ -70,6 +111,14 @@ export default function Dashboard() {
       if (filters.segment && filters.segment !== 'all') {
         const prospectSegment = prospect.icpScoreBreakdown?.segment || 'merchant';
         if (prospectSegment !== filters.segment) return false;
+      }
+
+      // ICP Range filter
+      if (icpRange !== 'all') {
+        const score = prospect.icpScore || 0;
+        if (icpRange === 'high' && score < 70) return false;
+        if (icpRange === 'medium' && (score < 40 || score >= 70)) return false;
+        if (icpRange === 'low' && score >= 40) return false;
       }
 
       // Search filter
@@ -83,7 +132,25 @@ export default function Dashboard() {
 
       return true;
     });
-  }, [prospects, filters]);
+
+    // Sort results
+    result = [...result].sort((a, b) => {
+      switch (sortBy) {
+        case 'icp_desc':
+          return (b.icpScore || 0) - (a.icpScore || 0);
+        case 'icp_asc':
+          return (a.icpScore || 0) - (b.icpScore || 0);
+        case 'name_asc':
+          return a.fullName.localeCompare(b.fullName);
+        case 'recent':
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        default:
+          return 0;
+      }
+    });
+
+    return result;
+  }, [prospects, filters, sortBy, icpRange]);
 
   // Stats
   const stats = useMemo(() => {
@@ -93,9 +160,32 @@ export default function Dashboard() {
     ).length;
     const withMessages = prospects.filter(p => p.messages && p.messages.length > 0).length;
     const highICP = prospects.filter(p => p.icpScore >= 70).length;
+    const mediumICP = prospects.filter(p => p.icpScore >= 40 && p.icpScore < 70).length;
+    const lowICP = prospects.filter(p => p.icpScore < 40).length;
 
-    return { total, connected, withMessages, highICP };
+    return { total, connected, withMessages, highICP, mediumICP, lowICP };
   }, [prospects]);
+
+  // Helper to apply filters and update URL
+  const applyFilter = useCallback((newFilters: Partial<FilterOptions>, newSort?: SortOption, newIcpRange?: ICPRange) => {
+    const updatedFilters = { ...filters, ...newFilters };
+    const updatedSort = newSort ?? sortBy;
+    const updatedIcpRange = newIcpRange ?? icpRange;
+
+    setFilters(updatedFilters);
+    if (newSort) setSortBy(newSort);
+    if (newIcpRange) setIcpRange(newIcpRange);
+
+    updateUrlParams(updatedFilters, updatedSort, updatedIcpRange);
+  }, [filters, sortBy, icpRange, updateUrlParams]);
+
+  // Clear all filters
+  const clearFilters = useCallback(() => {
+    setFilters({ status: 'all', segment: 'all', search: '' });
+    setSortBy('icp_desc');
+    setIcpRange('all');
+    router.replace('/', { scroll: false });
+  }, [router]);
 
   const handleImport = async (
     importedProspects: Partial<Prospect>[],
@@ -752,51 +842,95 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Cards */}
+        {/* Stats Cards - Clickable */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-lg p-4 border border-gray-200">
+          <button
+            onClick={clearFilters}
+            className="bg-white rounded-lg p-4 border border-gray-200 hover:border-gray-400 hover:shadow-sm transition-all text-left"
+          >
             <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
             <p className="text-sm text-gray-500">Total Prospects</p>
-          </div>
-          <div className="bg-white rounded-lg p-4 border border-gray-200">
+          </button>
+          <button
+            onClick={() => applyFilter({ status: 'connected', segment: 'all' })}
+            className="bg-white rounded-lg p-4 border border-gray-200 hover:border-green-400 hover:shadow-sm transition-all text-left"
+          >
             <p className="text-2xl font-bold text-green-600">{stats.connected}</p>
             <p className="text-sm text-gray-500">Connected</p>
-          </div>
-          <div className="bg-white rounded-lg p-4 border border-gray-200">
-            <p className="text-2xl font-bold text-purple-600">{stats.withMessages}</p>
-            <p className="text-sm text-gray-500">Messages Ready</p>
-          </div>
-          <div className="bg-white rounded-lg p-4 border border-gray-200">
+          </button>
+          <button
+            onClick={() => applyFilter({}, undefined, 'high')}
+            className="bg-white rounded-lg p-4 border border-gray-200 hover:border-blue-400 hover:shadow-sm transition-all text-left"
+          >
             <p className="text-2xl font-bold text-blue-600">{stats.highICP}</p>
             <p className="text-sm text-gray-500">High ICP (70+)</p>
-          </div>
+          </button>
+          <button
+            onClick={() => applyFilter({}, undefined, 'medium')}
+            className="bg-white rounded-lg p-4 border border-gray-200 hover:border-yellow-400 hover:shadow-sm transition-all text-left"
+          >
+            <p className="text-2xl font-bold text-yellow-600">{stats.mediumICP}</p>
+            <p className="text-sm text-gray-500">Medium ICP (40-69)</p>
+          </button>
         </div>
 
         {/* Filters and View Toggle */}
         <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            {/* Search */}
-            <div className="flex-1">
-              <div className="relative">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search by name, company, or title..."
-                  value={filters.search}
-                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+          <div className="flex flex-col gap-4">
+            {/* Top row: Search and View Toggle */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              {/* Search */}
+              <div className="flex-1">
+                <div className="relative">
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="Search by name, company, or title..."
+                    value={filters.search}
+                    onChange={(e) => applyFilter({ search: e.target.value })}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* View Toggle */}
+              <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`px-4 py-2 text-sm font-medium ${
+                    viewMode === 'grid'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setViewMode('pipeline')}
+                  className={`px-4 py-2 text-sm font-medium ${
+                    viewMode === 'pipeline'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                  </svg>
+                </button>
               </div>
             </div>
 
-            {/* Status Filter */}
-            <div>
+            {/* Bottom row: Filters and Sort */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              {/* Status Filter */}
               <select
                 value={filters.status || 'all'}
-                onChange={(e) => setFilters({ ...filters, status: e.target.value as PipelineStatus | 'all' })}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                onChange={(e) => applyFilter({ status: e.target.value as PipelineStatus | 'all' })}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="all">All Status</option>
                 <option value="not_contacted">Not Contacted</option>
@@ -807,48 +941,82 @@ export default function Dashboard() {
                 <option value="responded">Responded</option>
                 <option value="call_booked">Call Booked</option>
               </select>
-            </div>
 
-            {/* Segment Filter */}
-            <div>
+              {/* Segment Filter */}
               <select
                 value={filters.segment || 'all'}
-                onChange={(e) => setFilters({ ...filters, segment: e.target.value as SegmentFilter })}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                onChange={(e) => applyFilter({ segment: e.target.value as SegmentFilter })}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="all">All Segments</option>
                 <option value="agency">Agency</option>
                 <option value="merchant">Merchant</option>
                 <option value="freelancer">Freelancer</option>
               </select>
+
+              {/* ICP Range Filter */}
+              <select
+                value={icpRange}
+                onChange={(e) => applyFilter({}, undefined, e.target.value as ICPRange)}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="all">All ICP Scores</option>
+                <option value="high">High ICP (70+)</option>
+                <option value="medium">Medium ICP (40-69)</option>
+                <option value="low">Low ICP (Under 40)</option>
+              </select>
+
+              {/* Sort Dropdown */}
+              <select
+                value={sortBy}
+                onChange={(e) => applyFilter({}, e.target.value as SortOption)}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="icp_desc">ICP Score (High to Low)</option>
+                <option value="icp_asc">ICP Score (Low to High)</option>
+                <option value="name_asc">Name (A-Z)</option>
+                <option value="recent">Recently Added</option>
+              </select>
+
+              {/* Quick Filter Buttons */}
+              <div className="flex gap-2 ml-auto">
+                <button
+                  onClick={() => applyFilter({}, undefined, 'high')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                    icpRange === 'high'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                  }`}
+                >
+                  70+
+                </button>
+                <button
+                  onClick={() => applyFilter({ status: 'not_contacted' })}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                    filters.status === 'not_contacted'
+                      ? 'bg-gray-800 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Not Contacted
+                </button>
+                {(filters.status !== 'all' || filters.segment !== 'all' || icpRange !== 'all' || filters.search) && (
+                  <button
+                    onClick={clearFilters}
+                    className="px-3 py-1.5 text-xs font-medium rounded-full bg-red-100 text-red-700 hover:bg-red-200 transition-colors"
+                  >
+                    Clear All
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* View Toggle */}
-            <div className="flex rounded-lg border border-gray-300 overflow-hidden">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`px-4 py-2 text-sm font-medium ${
-                  viewMode === 'grid'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                </svg>
-              </button>
-              <button
-                onClick={() => setViewMode('pipeline')}
-                className={`px-4 py-2 text-sm font-medium ${
-                  viewMode === 'pipeline'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-                </svg>
-              </button>
+            {/* Showing count */}
+            <div className="text-sm text-gray-500">
+              Showing {filteredProspects.length} of {prospects.length} prospects
+              {(filters.status !== 'all' || filters.segment !== 'all' || icpRange !== 'all' || filters.search) && (
+                <span className="ml-2 text-blue-600">(filtered)</span>
+              )}
             </div>
           </div>
         </div>
