@@ -32,6 +32,7 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRecalculatingICP, setIsRecalculatingICP] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
@@ -509,6 +510,60 @@ export default function Dashboard() {
       alert('Failed to recalculate ICP scores. Check console for details.');
     } finally {
       setIsRecalculatingICP(false);
+    }
+  };
+
+  // Export prospects to CSV
+  const handleExport = async (exportAll: boolean = true) => {
+    if (!useSupabase) {
+      alert('Export requires Supabase to be configured.');
+      return;
+    }
+
+    setIsExporting(true);
+
+    try {
+      // Build query params for filtered export
+      const params = new URLSearchParams();
+      if (!exportAll) {
+        if (filters.status && filters.status !== 'all') params.set('status', filters.status);
+        if (filters.segment && filters.segment !== 'all') params.set('segment', filters.segment);
+        if (icpRange && icpRange !== 'all') params.set('icpRange', icpRange);
+        if (filters.search) params.set('search', filters.search);
+      }
+
+      const queryString = params.toString();
+      const url = `/api/prospects/export${queryString ? `?${queryString}` : ''}`;
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to export');
+      }
+
+      // Get the blob and trigger download
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+
+      // Extract filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
+      const filename = filenameMatch ? filenameMatch[1] : `isaac-outreach-export-${new Date().toISOString().split('T')[0]}.csv`;
+
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+
+    } catch (error) {
+      console.error('Error exporting prospects:', error);
+      alert('Failed to export prospects. Check console for details.');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -1005,7 +1060,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Row 3: Showing count + Recalculate ICP */}
+            {/* Row 3: Showing count + Actions */}
             <div className="flex items-center justify-between pt-1 border-t border-gray-100">
               <div className="text-xs text-gray-500">
                 Showing {filteredProspects.length} of {prospects.length}
@@ -1015,29 +1070,57 @@ export default function Dashboard() {
               </div>
 
               {useSupabase && (
-                <button
-                  onClick={handleRecalculateICP}
-                  disabled={isRecalculatingICP}
-                  className="inline-flex items-center text-xs text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
-                  title="Recalculate ICP scores"
-                >
-                  {isRecalculatingICP ? (
-                    <>
-                      <svg className="animate-spin w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      Recalculating...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Recalculate ICP
-                    </>
-                  )}
-                </button>
+                <div className="flex items-center gap-3">
+                  {/* Export CSV Button */}
+                  <button
+                    onClick={() => handleExport(true)}
+                    disabled={isExporting}
+                    className="inline-flex items-center text-xs text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                    title="Export all prospects to CSV"
+                  >
+                    {isExporting ? (
+                      <>
+                        <svg className="animate-spin w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Exporting...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Export CSV
+                      </>
+                    )}
+                  </button>
+
+                  {/* Recalculate ICP Button */}
+                  <button
+                    onClick={handleRecalculateICP}
+                    disabled={isRecalculatingICP}
+                    className="inline-flex items-center text-xs text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                    title="Recalculate ICP scores"
+                  >
+                    {isRecalculatingICP ? (
+                      <>
+                        <svg className="animate-spin w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Recalculating...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Recalculate ICP
+                      </>
+                    )}
+                  </button>
+                </div>
               )}
             </div>
           </div>
