@@ -739,59 +739,57 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
+      {/* Header - Simplified */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold text-gray-900">
-                Isaac Outreach
-              </h1>
-              <span className="ml-3 px-2 py-1 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
+          <div className="flex items-center justify-between h-14">
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-bold text-gray-900">Isaac Outreach</h1>
+              <span className="px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 rounded">
                 Parcelis
               </span>
-              {/* Database Status */}
-              <span className={`ml-3 px-2 py-1 text-xs font-medium rounded-full ${
-                useSupabase
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-yellow-100 text-yellow-700'
+              <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${
+                useSupabase ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
               }`}>
-                {useSupabase ? 'Synced' : 'Local Only'}
+                {useSupabase ? 'Synced' : 'Local'}
               </span>
             </div>
 
-            <div className="flex items-center space-x-3">
-              {/* Selection Mode Toggle */}
+            <div className="flex items-center gap-2">
+              {/* Selection Mode - Icon only when not active */}
               <button
                 onClick={toggleSelectionMode}
-                className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                className={`inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${
                   selectionMode
-                    ? 'bg-gray-800 text-white hover:bg-gray-900'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? 'bg-gray-800 text-white'
+                    : 'text-gray-600 hover:bg-gray-100'
                 }`}
+                title={selectionMode ? 'Cancel selection' : 'Select prospects'}
               >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                 </svg>
-                {selectionMode ? 'Cancel Select' : 'Select'}
+                {selectionMode && <span className="ml-1.5">Cancel</span>}
               </button>
+
               <button
                 onClick={() => setShowBulkUrlModal(true)}
-                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 transition-colors"
               >
-                <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5 mr-1.5" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
                 </svg>
-                Import URLs
+                Import
               </button>
+
               <Link
                 href="/engagement"
-                className="inline-flex items-center px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded-lg hover:bg-orange-700 transition-colors"
+                className="inline-flex items-center px-3 py-1.5 bg-orange-600 text-white text-xs font-medium rounded-md hover:bg-orange-700 transition-colors"
               >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
-                Engagement
+                Engage
               </Link>
             </div>
           </div>
@@ -799,96 +797,103 @@ export default function Dashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Cards - Clickable */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        {/* Stats Cards - Compact, clickable with toggle */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
           <button
             onClick={clearFilters}
-            className="bg-white rounded-lg p-4 border border-gray-200 hover:border-gray-400 hover:shadow-sm transition-all text-left"
+            className="bg-white rounded-md px-3 py-2 border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all text-left flex items-center gap-2"
           >
-            <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-            <p className="text-sm text-gray-500">Total Prospects</p>
+            <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+              <svg className="w-3.5 h-3.5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-gray-900">{stats.total}</p>
+              <p className="text-[10px] text-gray-500">Total</p>
+            </div>
           </button>
           <button
-            onClick={() => applyFilter({ status: 'connected', segment: 'all' })}
-            className="bg-white rounded-lg p-4 border border-gray-200 hover:border-green-400 hover:shadow-sm transition-all text-left"
+            onClick={() => applyFilter({ status: filters.status === 'connected' ? 'all' : 'connected', segment: 'all' })}
+            className={`bg-white rounded-md px-3 py-2 border hover:shadow-sm transition-all text-left flex items-center gap-2 ${
+              filters.status === 'connected' ? 'border-emerald-400 bg-emerald-50' : 'border-gray-200 hover:border-emerald-300'
+            }`}
           >
-            <p className="text-2xl font-bold text-green-600">{stats.connected}</p>
-            <p className="text-sm text-gray-500">Connected</p>
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
+              filters.status === 'connected' ? 'bg-emerald-200' : 'bg-emerald-100'
+            }`}>
+              <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-emerald-600">{stats.connected}</p>
+              <p className="text-[10px] text-gray-500">Connected</p>
+            </div>
           </button>
           <button
-            onClick={() => applyFilter({}, undefined, 'high')}
-            className="bg-white rounded-lg p-4 border border-gray-200 hover:border-blue-400 hover:shadow-sm transition-all text-left"
+            onClick={() => applyFilter({}, undefined, icpRange === 'high' ? 'all' : 'high')}
+            className={`bg-white rounded-md px-3 py-2 border hover:shadow-sm transition-all text-left flex items-center gap-2 ${
+              icpRange === 'high' ? 'border-emerald-400 bg-emerald-50' : 'border-gray-200 hover:border-emerald-300'
+            }`}
           >
-            <p className="text-2xl font-bold text-blue-600">{stats.highICP}</p>
-            <p className="text-sm text-gray-500">High ICP (70+)</p>
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
+              icpRange === 'high' ? 'bg-emerald-200' : 'bg-emerald-100'
+            }`}>
+              <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-emerald-600">{stats.highICP}</p>
+              <p className="text-[10px] text-gray-500">High ICP</p>
+            </div>
           </button>
           <button
-            onClick={() => applyFilter({}, undefined, 'medium')}
-            className="bg-white rounded-lg p-4 border border-gray-200 hover:border-yellow-400 hover:shadow-sm transition-all text-left"
+            onClick={() => applyFilter({}, undefined, icpRange === 'medium' ? 'all' : 'medium')}
+            className={`bg-white rounded-md px-3 py-2 border hover:shadow-sm transition-all text-left flex items-center gap-2 ${
+              icpRange === 'medium' ? 'border-amber-400 bg-amber-50' : 'border-gray-200 hover:border-amber-300'
+            }`}
           >
-            <p className="text-2xl font-bold text-yellow-600">{stats.mediumICP}</p>
-            <p className="text-sm text-gray-500">Medium ICP (40-69)</p>
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
+              icpRange === 'medium' ? 'bg-amber-200' : 'bg-amber-100'
+            }`}>
+              <svg className="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-amber-600">{stats.mediumICP}</p>
+              <p className="text-[10px] text-gray-500">Medium ICP</p>
+            </div>
           </button>
         </div>
 
-        {/* Filters and View Toggle */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-          <div className="flex flex-col gap-4">
-            {/* Top row: Search and View Toggle */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-              {/* Search */}
-              <div className="flex-1">
-                <div className="relative">
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  <input
-                    type="text"
-                    placeholder="Search by name, company, or title..."
-                    value={filters.search}
-                    onChange={(e) => applyFilter({ search: e.target.value })}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              {/* View Toggle */}
-              <div className="flex rounded-lg border border-gray-300 overflow-hidden">
-                <button
-                  onClick={() => setViewMode('grid')}
-                  className={`px-4 py-2 text-sm font-medium ${
-                    viewMode === 'grid'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => setViewMode('pipeline')}
-                  className={`px-4 py-2 text-sm font-medium ${
-                    viewMode === 'pipeline'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-                  </svg>
-                </button>
-              </div>
+        {/* Filters and View Toggle - Compact */}
+        <div className="bg-white rounded-md border border-gray-200 p-2.5 mb-3">
+          <div className="flex flex-col gap-2">
+            {/* Row 1: Search */}
+            <div className="relative">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search prospects..."
+                value={filters.search}
+                onChange={(e) => applyFilter({ search: e.target.value })}
+                className="w-full pl-9 pr-4 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              />
             </div>
 
-            {/* Bottom row: Filters and Sort */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              {/* Status Filter */}
+            {/* Row 2: Filters, Quick Pills, Sort, View Toggle */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Filter Dropdowns - Compact */}
               <select
                 value={filters.status || 'all'}
                 onChange={(e) => applyFilter({ status: e.target.value as PipelineStatus | 'all' })}
-                className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="px-2 py-1 text-xs border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
               >
                 <option value="all">All Status</option>
                 <option value="not_contacted">Not Contacted</option>
@@ -900,11 +905,10 @@ export default function Dashboard() {
                 <option value="call_booked">Call Booked</option>
               </select>
 
-              {/* Segment Filter */}
               <select
                 value={filters.segment || 'all'}
                 onChange={(e) => applyFilter({ segment: e.target.value as SegmentFilter })}
-                className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="px-2 py-1 text-xs border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
               >
                 <option value="all">All Segments</option>
                 <option value="agency">Agency</option>
@@ -912,91 +916,122 @@ export default function Dashboard() {
                 <option value="freelancer">Freelancer</option>
               </select>
 
-              {/* ICP Range Filter */}
               <select
                 value={icpRange}
                 onChange={(e) => applyFilter({}, undefined, e.target.value as ICPRange)}
-                className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="px-2 py-1 text-xs border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
               >
-                <option value="all">All ICP Scores</option>
-                <option value="high">High ICP (70+)</option>
-                <option value="medium">Medium ICP (40-69)</option>
-                <option value="low">Low ICP (Under 40)</option>
+                <option value="all">All ICP</option>
+                <option value="high">High (70+)</option>
+                <option value="medium">Medium (40-69)</option>
+                <option value="low">Low (&lt;40)</option>
               </select>
 
-              {/* Sort Dropdown */}
-              <select
-                value={sortBy}
-                onChange={(e) => applyFilter({}, e.target.value as SortOption)}
-                className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="icp_desc">ICP Score (High to Low)</option>
-                <option value="icp_asc">ICP Score (Low to High)</option>
-                <option value="name_asc">Name (A-Z)</option>
-                <option value="recent">Recently Added</option>
-              </select>
+              {/* Separator */}
+              <div className="h-4 w-px bg-gray-200 mx-1 hidden sm:block" />
 
-              {/* Quick Filter Buttons */}
-              <div className="flex gap-2 ml-auto">
+              {/* Quick Filter Pills - Smaller */}
+              <button
+                onClick={() => applyFilter({}, undefined, icpRange === 'high' ? 'all' : 'high')}
+                className={`px-2 py-0.5 text-[11px] font-medium rounded-full transition-colors ${
+                  icpRange === 'high'
+                    ? 'bg-emerald-600 text-white'
+                    : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                70+
+              </button>
+              <button
+                onClick={() => applyFilter({ status: filters.status === 'not_contacted' ? 'all' : 'not_contacted' })}
+                className={`px-2 py-0.5 text-[11px] font-medium rounded-full transition-colors ${
+                  filters.status === 'not_contacted'
+                    ? 'bg-gray-700 text-white'
+                    : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                New
+              </button>
+              {(filters.status !== 'all' || filters.segment !== 'all' || icpRange !== 'all' || filters.search) && (
                 <button
-                  onClick={() => applyFilter({}, undefined, 'high')}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
-                    icpRange === 'high'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                  }`}
+                  onClick={clearFilters}
+                  className="px-2 py-0.5 text-[11px] font-medium text-gray-400 hover:text-gray-600 transition-colors"
                 >
-                  70+
+                  Clear
                 </button>
-                <button
-                  onClick={() => applyFilter({ status: 'not_contacted' })}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
-                    filters.status === 'not_contacted'
-                      ? 'bg-gray-800 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+              )}
+
+              {/* Right side: Sort and View Toggle */}
+              <div className="flex items-center gap-2 ml-auto">
+                <select
+                  value={sortBy}
+                  onChange={(e) => applyFilter({}, e.target.value as SortOption)}
+                  className="px-2 py-1 text-xs border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
                 >
-                  Not Contacted
-                </button>
-                {(filters.status !== 'all' || filters.segment !== 'all' || icpRange !== 'all' || filters.search) && (
+                  <option value="icp_desc">ICP ↓</option>
+                  <option value="icp_asc">ICP ↑</option>
+                  <option value="name_asc">Name A-Z</option>
+                  <option value="recent">Recent</option>
+                </select>
+
+                {/* View Toggle */}
+                <div className="flex border border-gray-200 rounded-md overflow-hidden">
                   <button
-                    onClick={clearFilters}
-                    className="px-3 py-1.5 text-xs font-medium rounded-full bg-red-100 text-red-700 hover:bg-red-200 transition-colors"
+                    onClick={() => setViewMode('grid')}
+                    className={`px-2 py-1 text-xs transition-colors ${
+                      viewMode === 'grid'
+                        ? 'bg-gray-100 text-gray-900'
+                        : 'text-gray-500 hover:bg-gray-50'
+                    }`}
+                    title="Grid view"
                   >
-                    Clear All
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                    </svg>
                   </button>
-                )}
+                  <button
+                    onClick={() => setViewMode('pipeline')}
+                    className={`px-2 py-1 text-xs transition-colors ${
+                      viewMode === 'pipeline'
+                        ? 'bg-gray-100 text-gray-900'
+                        : 'text-gray-500 hover:bg-gray-50'
+                    }`}
+                    title="Pipeline view"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Showing count + Recalculate ICP */}
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-500">
-                Showing {filteredProspects.length} of {prospects.length} prospects
+            {/* Row 3: Showing count + Recalculate ICP */}
+            <div className="flex items-center justify-between pt-1 border-t border-gray-100">
+              <div className="text-xs text-gray-500">
+                Showing {filteredProspects.length} of {prospects.length}
                 {(filters.status !== 'all' || filters.segment !== 'all' || icpRange !== 'all' || filters.search) && (
-                  <span className="ml-2 text-blue-600">(filtered)</span>
+                  <span className="ml-1 text-blue-600">(filtered)</span>
                 )}
               </div>
 
-              {/* Recalculate ICP - Less prominent location */}
               {useSupabase && (
                 <button
                   onClick={handleRecalculateICP}
                   disabled={isRecalculatingICP}
-                  className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Recalculate ICP scores for all prospects"
+                  className="inline-flex items-center text-xs text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                  title="Recalculate ICP scores"
                 >
                   {isRecalculatingICP ? (
                     <>
-                      <svg className="animate-spin w-3.5 h-3.5 mr-1.5" fill="none" viewBox="0 0 24 24">
+                      <svg className="animate-spin w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
                       Recalculating...
                     </>
                   ) : (
                     <>
-                      <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
                       Recalculate ICP
@@ -1010,7 +1045,7 @@ export default function Dashboard() {
 
         {/* Bulk Actions Bar */}
         {selectionMode && (
-          <div className="bg-gray-800 rounded-lg p-4 mb-6 flex items-center justify-between">
+          <div className="bg-gray-800 rounded-md p-3 mb-3 flex items-center justify-between">
             <div className="flex items-center gap-4">
               <span className="text-white font-medium">
                 {selectedIds.size} selected
@@ -1106,7 +1141,7 @@ export default function Dashboard() {
             </button>
           </div>
         ) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {filteredProspects.map((prospect) => (
               <ProspectCard
                 key={prospect.id}
