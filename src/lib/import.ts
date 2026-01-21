@@ -106,6 +106,181 @@ const PRODUCT_CATEGORIES = [
   'ceramics', 'premium', 'luxury'
 ];
 
+// ============================================================================
+// SEGMENT CLASSIFICATION
+// ============================================================================
+//
+// CRITICAL FIX (2026-01-20):
+// Previous logic was too restrictive and classified many legitimate merchants
+// as "Unknown" (e.g., Zulay Kitchen CEO, Sera Swimwear Founder).
+//
+// NEW LOGIC: Use industry-based detection as primary signal, then fall back
+// to keyword detection. Default to Merchant rather than Unknown.
+//
+// Segments: "merchant", "agency", "freelancer" (no more "unknown")
+// ============================================================================
+
+// Industries that strongly indicate a MERCHANT (product-based business)
+const MERCHANT_INDUSTRIES = [
+  'retail', 'consumer goods', 'food & beverages', 'food and beverages',
+  'apparel', 'fashion', 'jewelry', 'cosmetics', 'sporting goods',
+  'furniture', 'home goods', 'electronics', 'health & wellness',
+  'health and wellness', 'consumer products', 'food production',
+  'food & beverage', 'consumer services', 'retail apparel',
+  'luxury goods', 'textiles', 'household products', 'pet products',
+  'beverage', 'personal care', 'beauty', 'toys', 'games',
+  'wholesale', 'manufacturing', 'packaging', 'wine and spirits',
+  'leisure', 'restaurants', 'hospitality'
+];
+
+// Industries that strongly indicate an AGENCY (service-based business)
+const AGENCY_INDUSTRIES = [
+  'marketing', 'advertising', 'marketing and advertising',
+  'public relations', 'design', 'graphic design', 'web design',
+  'information technology', 'computer software', 'internet',
+  'management consulting', 'business consulting', 'staffing',
+  'professional services', 'media production', 'online media'
+];
+
+// Keywords in company description/headline that indicate MERCHANT
+const MERCHANT_DESCRIPTION_KEYWORDS = [
+  'brand', 'products', 'sell', 'shop', 'store', 'e-commerce', 'ecommerce',
+  'dtc', 'd2c', 'direct-to-consumer', 'direct to consumer', 'amazon',
+  'shopify', 'customers', 'shipping', 'fulfillment', 'orders',
+  'manufacturer', 'wholesale', 'retail', 'consumer', 'physical products',
+  'kitchen', 'apparel', 'clothing', 'jewelry', 'accessories', 'gear',
+  'goods', 'collection', 'designs', 'handmade', 'crafted'
+];
+
+// Keywords in company name/description that indicate AGENCY
+const AGENCY_DESCRIPTION_KEYWORDS = [
+  'agency', 'partner', 'partners', 'consulting', 'consultancy',
+  'services', 'solutions', 'help brands', 'work with brands',
+  'clients', 'digital marketing', 'growth agency', 'creative agency',
+  'marketing agency', 'branding agency', 'ecommerce agency',
+  'shopify partner', 'shopify expert', 'shopify agency'
+];
+
+// Keywords/patterns that indicate FREELANCER
+const FREELANCER_INDICATORS = [
+  'self-employed', 'freelance', 'freelancer', 'independent consultant',
+  'independent contractor', 'solo', 'solopreneur'
+];
+
+/**
+ * Detect segment based on industry, keywords, and company info
+ * Returns: "merchant", "agency", or "freelancer"
+ */
+function detectSegment(
+  companyName: string,
+  industry: string,
+  about: string,
+  headline: string,
+  companySize: string | undefined,
+  title: string
+): 'merchant' | 'agency' | 'freelancer' {
+  const companyLower = companyName.toLowerCase().trim();
+  const industryLower = industry.toLowerCase().trim();
+  const aboutLower = about.toLowerCase();
+  const headlineLower = headline.toLowerCase();
+  const titleLower = title.toLowerCase();
+  const combinedText = `${companyLower} ${aboutLower} ${headlineLower}`;
+
+  // ============================================================================
+  // STEP 1: Check for explicit FREELANCER signals (highest priority)
+  // ============================================================================
+  const isFreelancerByIndicator = FREELANCER_INDICATORS.some(ind =>
+    companyLower.includes(ind) || titleLower.includes(ind) || headlineLower.includes(ind)
+  );
+
+  const isNoCompany = !companyLower || companyLower === 'self-employed' ||
+    companyLower === 'freelance' || companyLower === 'independent';
+
+  const isSoloBySize = companySize?.toLowerCase().includes('self-employed') ||
+    companySize === '1' || companySize?.toLowerCase() === 'myself only';
+
+  if (isFreelancerByIndicator || (isNoCompany && isSoloBySize)) {
+    return 'freelancer';
+  }
+
+  // ============================================================================
+  // STEP 2: Check for AGENCY signals (check before merchant)
+  // Agency detection requires strong signals to avoid false positives
+  // ============================================================================
+
+  // Industry-based agency detection
+  const hasAgencyIndustry = AGENCY_INDUSTRIES.some(ind =>
+    industryLower.includes(ind)
+  );
+
+  // Keyword-based agency detection
+  const hasAgencyKeywords = AGENCY_DESCRIPTION_KEYWORDS.some(kw =>
+    combinedText.includes(kw)
+  );
+
+  // Company name contains agency indicators
+  const companyNameIsAgency = ['agency', 'partners', 'consulting', 'consultancy', 'group', 'studios']
+    .some(term => companyLower.includes(term));
+
+  // Strong agency signal: multiple indicators present
+  const isAgency = (hasAgencyIndustry && (hasAgencyKeywords || companyNameIsAgency)) ||
+    (companyNameIsAgency && hasAgencyKeywords) ||
+    (combinedText.includes('clients') && hasAgencyIndustry);
+
+  if (isAgency) {
+    return 'agency';
+  }
+
+  // ============================================================================
+  // STEP 3: Check for MERCHANT signals
+  // More lenient - most businesses selling products should be merchants
+  // ============================================================================
+
+  // Industry-based merchant detection (strongest signal)
+  const hasMerchantIndustry = MERCHANT_INDUSTRIES.some(ind =>
+    industryLower.includes(ind)
+  );
+
+  // Keyword-based merchant detection
+  const hasMerchantKeywords = MERCHANT_DESCRIPTION_KEYWORDS.some(kw =>
+    combinedText.includes(kw)
+  );
+
+  // Company name suggests product business
+  const companyNameIsMerchant = ['brand', 'co.', 'co', 'goods', 'products', 'kitchen',
+    'apparel', 'wear', 'gear', 'shop', 'store', 'swimwear', 'jewelry', 'gems']
+    .some(term => companyLower.includes(term));
+
+  if (hasMerchantIndustry || hasMerchantKeywords || companyNameIsMerchant) {
+    return 'merchant';
+  }
+
+  // ============================================================================
+  // STEP 4: Tiebreaker logic for unclear cases
+  // ============================================================================
+
+  // Has C-suite title + any company = likely a merchant (businesses > agencies)
+  const hasCsuiteTtile = ['ceo', 'founder', 'owner', 'president', 'coo', 'chief']
+    .some(t => titleLower.includes(t));
+
+  if (hasCsuiteTtile && companyLower && !isNoCompany) {
+    // If industry mentions services/consulting, likely agency
+    if (industryLower.includes('service') || industryLower.includes('consulting')) {
+      return 'agency';
+    }
+    // Default: C-suite with a company = merchant
+    return 'merchant';
+  }
+
+  // Has a real company name = default to merchant
+  if (companyLower && companyLower.length > 2 && !isNoCompany) {
+    return 'merchant';
+  }
+
+  // No company or very short company name = freelancer
+  return 'freelancer';
+}
+
 // Parse company size from string like "11-50 employees" or "51-200"
 function parseCompanySize(sizeStr: string | undefined): number | null {
   if (!sizeStr) return null;
@@ -129,7 +304,7 @@ function parseCompanySize(sizeStr: string | undefined): number | null {
 
 export function calculateICPScoreWithBreakdown(prospect: Partial<Prospect>): ICPScoreBreakdown {
   const breakdown: ICPScoreBreakdown = {
-    segment: 'unknown',
+    segment: 'merchant', // Default to merchant, will be overwritten by detectSegment
     titleAuthority: 0,
     companySignals: 0,
     companySize: 0,
@@ -146,28 +321,17 @@ export function calculateICPScoreWithBreakdown(prospect: Partial<Prospect>): ICP
   const combinedText = `${companyName} ${about} ${headline} ${industry}`;
 
   // ============================================================================
-  // STEP 1: Detect segment (Agency vs Merchant)
-  // More lenient detection - keywords alone can indicate segment
+  // STEP 1: Detect segment using improved classification
+  // See detectSegment function for detailed logic
   // ============================================================================
-  const agencyIndicators = ['agency', 'partner', 'consulting', 'consultancy', 'services'];
-  const hasAgencyKeywords = AGENCY_KEYWORDS.some(kw => combinedText.includes(kw));
-  const hasAgencyIndicators = agencyIndicators.some(ind =>
-    companyName.includes(ind) || about.includes(ind) || headline.includes(ind)
+  breakdown.segment = detectSegment(
+    prospect.companyName || '',
+    prospect.companyIndustry || '',
+    prospect.aboutSummary || '',
+    prospect.headline || '',
+    prospect.companySize,
+    prospect.jobTitle || prospect.headline || ''
   );
-
-  // Strong agency signal: agency indicators in company name/about
-  // Weak agency signal: just has shopify/ecommerce keywords + works with "clients"
-  const isAgency = hasAgencyIndicators ||
-    (hasAgencyKeywords && (about.includes('clients') || about.includes('brands we')));
-
-  const hasMerchantKeywords = MERCHANT_KEYWORDS.some(kw => combinedText.includes(kw));
-  const isMerchant = hasMerchantKeywords && !isAgency;
-
-  if (isAgency) {
-    breakdown.segment = 'agency';
-  } else if (isMerchant) {
-    breakdown.segment = 'merchant';
-  }
 
   // ============================================================================
   // STEP 2: Score title authority (0-40 points)
@@ -285,7 +449,8 @@ export function calculateICPScoreWithBreakdown(prospect: Partial<Prospect>): ICP
   } else {
     // No size data - give a small neutral bonus rather than 0
     // Most prospects in the ICP have some company presence
-    if (breakdown.segment !== 'unknown') {
+    // Freelancers don't get this bonus since they don't have a company
+    if (breakdown.segment !== 'freelancer') {
       breakdown.companySize = 5;
     }
   }

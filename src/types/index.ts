@@ -35,7 +35,7 @@ export interface RecentPost {
 }
 
 export interface ICPScoreBreakdown {
-  segment: 'agency' | 'merchant' | 'unknown';
+  segment: 'agency' | 'merchant' | 'freelancer';
   titleAuthority: number;      // 0-40: Decision-making power (primary factor)
   companySignals: number;      // 0-35: Shopify/e-commerce keywords
   companySize: number;         // -10 to +15: Size fit penalty/bonus
@@ -144,7 +144,7 @@ export interface RawScrapedRow {
 }
 
 // Filter/sort options
-export type SegmentFilter = 'agency' | 'merchant' | 'unknown' | 'all';
+export type SegmentFilter = 'agency' | 'merchant' | 'freelancer' | 'all';
 
 export interface FilterOptions {
   status?: PipelineStatus | 'all';

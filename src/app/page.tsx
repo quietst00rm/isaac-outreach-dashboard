@@ -68,7 +68,7 @@ export default function Dashboard() {
 
       // Segment filter
       if (filters.segment && filters.segment !== 'all') {
-        const prospectSegment = prospect.icpScoreBreakdown?.segment || 'unknown';
+        const prospectSegment = prospect.icpScoreBreakdown?.segment || 'merchant';
         if (prospectSegment !== filters.segment) return false;
       }
 
@@ -819,7 +819,7 @@ export default function Dashboard() {
                 <option value="all">All Segments</option>
                 <option value="agency">Agency</option>
                 <option value="merchant">Merchant</option>
-                <option value="unknown">Freelancer</option>
+                <option value="freelancer">Freelancer</option>
               </select>
             </div>
 

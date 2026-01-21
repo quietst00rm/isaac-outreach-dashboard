@@ -193,10 +193,10 @@ export function ProspectDetail({
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                         icpBreakdown.segment === 'agency' ? 'bg-purple-100 text-purple-700' :
                         icpBreakdown.segment === 'merchant' ? 'bg-blue-100 text-blue-700' :
-                        'bg-gray-100 text-gray-500'
+                        'bg-orange-100 text-orange-700'
                       }`}>
                         {icpBreakdown.segment === 'agency' ? 'Agency' :
-                         icpBreakdown.segment === 'merchant' ? 'Merchant' : 'Unknown'}
+                         icpBreakdown.segment === 'merchant' ? 'Merchant' : 'Freelancer'}
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
