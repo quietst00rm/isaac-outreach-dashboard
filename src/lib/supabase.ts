@@ -441,6 +441,8 @@ export async function saveEngagementPost(post: {
   authorName: string;
   authorPhotoUrl?: string;
   generatedComments?: string[];
+  isArchived?: boolean;
+  archivedReason?: 'aged' | 'engaged';
 }) {
   const client = getSupabaseClient();
   const { data, error } = await client
@@ -453,7 +455,8 @@ export async function saveEngagementPost(post: {
       author_name: post.authorName,
       author_photo_url: post.authorPhotoUrl || null,
       generated_comments: post.generatedComments || [],
-      status: 'active'
+      status: post.isArchived ? 'archived' : 'active',
+      archived_reason: post.archivedReason || null
     }, {
       onConflict: 'post_url'
     })

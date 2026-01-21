@@ -106,16 +106,22 @@ export async function generateComment(
 ): Promise<string> {
   const prospectContext = buildProspectContext(prospect);
 
+  // Truncate post content to avoid overly long prompts
+  const truncatedPost = postContent.length > 800
+    ? postContent.substring(0, 800) + '...'
+    : postContent;
+
   const prompt = `${buildMessagePrompt('comment', prospectContext)}
 
 ## Post to Comment On
-${postContent}
+${truncatedPost}
 
-Generate the comment now:`;
+Write a SHORT (15-25 words max) comment now:`;
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
-    max_tokens: 300,
+    max_tokens: 100, // Shorter to enforce brevity
+    temperature: 0.9, // Higher for variety between the 3 comments
     messages: [
       {
         role: 'user',

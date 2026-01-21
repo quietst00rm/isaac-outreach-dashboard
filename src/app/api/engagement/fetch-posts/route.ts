@@ -10,24 +10,27 @@ interface ApifyPost {
   postUrl?: string;
   url?: string;
   link?: string;
+  linkedinUrl?: string;  // harvestapi actor uses this
   // Post content variations
   text?: string;
   postText?: string;
   content?: string;
-  // Date variations
-  postedAt?: string;
+  // Date variations - postedAt can be string or object with date/timestamp
+  postedAt?: string | Record<string, unknown>;
   postedDate?: string;
   date?: string;
   timestamp?: string;
   postedAtTimestamp?: number;
-  // Author variations
+  // Author variations - can be string or object
   authorName?: string;
-  author?: string;
+  author?: string | { name?: string; url?: string; profileUrl?: string; profilePicture?: string };
   fullName?: string;
   authorProfilePicture?: string;
   authorProfileUrl?: string;
   profileUrl?: string;
   authorUrl?: string;
+  // Query field contains the original profile URL we requested
+  query?: string;
 }
 
 interface ProspectInput {
@@ -149,18 +152,64 @@ export async function POST(request: Request) {
     }
 
     // Helper to extract field with fallbacks
-    const getPostUrl = (p: ApifyPost) => p.postUrl || p.url || p.link;
+    // linkedinUrl is primary field from harvestapi actor
+    const getPostUrl = (p: ApifyPost) => p.linkedinUrl || p.postUrl || p.url || p.link;
     const getPostText = (p: ApifyPost) => p.text || p.postText || p.content;
-    const getPostedAt = (p: ApifyPost) => {
-      if (p.postedAt) return p.postedAt;
-      if (p.postedDate) return p.postedDate;
-      if (p.date) return p.date;
-      if (p.timestamp) return p.timestamp;
-      if (p.postedAtTimestamp) return new Date(p.postedAtTimestamp * 1000).toISOString();
+    const getPostedAt = (p: ApifyPost): string | null => {
+      // postedAt can be a string, object with date/timestamp, or number
+      if (p.postedAt) {
+        if (typeof p.postedAt === 'string') return p.postedAt;
+        if (typeof p.postedAt === 'object') {
+          const pa = p.postedAt as Record<string, unknown>;
+          // Try common object structures
+          if (pa.date && typeof pa.date === 'string') return pa.date;
+          if (pa.dateTime && typeof pa.dateTime === 'string') return pa.dateTime;
+          if (pa.timestamp && typeof pa.timestamp === 'number') {
+            return new Date(pa.timestamp * 1000).toISOString();
+          }
+          if (pa.time && typeof pa.time === 'number') {
+            return new Date(pa.time).toISOString();
+          }
+          // Log the object structure for debugging
+          console.log('postedAt is object with keys:', Object.keys(pa), 'values:', pa);
+        }
+      }
+      if (p.postedDate && typeof p.postedDate === 'string') return p.postedDate;
+      if (p.date && typeof p.date === 'string') return p.date;
+      if (p.timestamp && typeof p.timestamp === 'string') return p.timestamp;
+      if (p.postedAtTimestamp && typeof p.postedAtTimestamp === 'number') {
+        return new Date(p.postedAtTimestamp * 1000).toISOString();
+      }
       return null;
     };
-    const getAuthorName = (p: ApifyPost) => p.authorName || p.author || p.fullName;
-    const getAuthorUrl = (p: ApifyPost) => p.authorProfileUrl || p.profileUrl || p.authorUrl;
+    // Author can be a string or an object with name property
+    const getAuthorName = (p: ApifyPost): string => {
+      if (p.authorName) return p.authorName;
+      if (typeof p.author === 'string') return p.author;
+      if (typeof p.author === 'object' && p.author?.name) return p.author.name;
+      if (p.fullName) return p.fullName;
+      return '';
+    };
+    // Extract author URL from author object or direct fields
+    const getAuthorUrl = (p: ApifyPost): string => {
+      if (typeof p.author === 'object' && p.author) {
+        // Ensure we return strings
+        if (p.author.profileUrl && typeof p.author.profileUrl === 'string') return p.author.profileUrl;
+        if (p.author.url && typeof p.author.url === 'string') return p.author.url;
+      }
+      // Also check the query field - it contains the original profile URL we requested
+      if (p.query && typeof p.query === 'string') return p.query;
+      // Fallback to other fields, ensure string
+      const fallback = p.authorProfileUrl || p.profileUrl || p.authorUrl || '';
+      return typeof fallback === 'string' ? fallback : '';
+    };
+    // Get author profile picture
+    const getAuthorPhoto = (p: ApifyPost): string | undefined => {
+      if (typeof p.author === 'object' && p.author?.profilePicture) {
+        return p.author.profilePicture;
+      }
+      return p.authorProfilePicture;
+    };
 
     // Create a map of LinkedIn URL to prospect for quick lookup
     // Use multiple formats for better matching
@@ -178,10 +227,12 @@ export async function POST(request: Request) {
     });
 
     // Process posts - filter by age and save
-    const twoDaysAgo = new Date();
-    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    // Using 7 days for now to ensure we capture posts
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - 7);
 
-    const savedPosts = [];
+    const savedActivePosts: unknown[] = [];
+    const savedArchivedPosts: unknown[] = [];
     const skippedPosts = [];
     const posts: ApifyPost[] = rawPosts;
 
@@ -189,18 +240,34 @@ export async function POST(request: Request) {
       const postUrl = getPostUrl(post);
       const postText = getPostText(post);
 
+      // Debug: log what we're extracting
+      console.log('Processing post:', {
+        linkedinUrl: post.linkedinUrl,
+        postUrl: post.postUrl,
+        url: post.url,
+        extractedUrl: postUrl,
+        hasContent: !!post.content,
+        hasText: !!post.text,
+        extractedText: postText?.substring(0, 50),
+        postedAt: post.postedAt,
+        authorType: typeof post.author,
+        author: post.author
+      });
+
       if (!postUrl || !postText) {
         skippedPosts.push({
           url: postUrl || 'unknown',
           reason: `Missing ${!postUrl ? 'URL' : 'text'}`,
-          rawKeys: Object.keys(post)
+          rawKeys: Object.keys(post),
+          linkedinUrlField: post.linkedinUrl,
+          contentField: post.content
         });
         continue;
       }
 
       // Find the prospect this post belongs to
-      const authorUrl = getAuthorUrl(post)?.toLowerCase() || '';
-      const authorName = getAuthorName(post) || '';
+      const authorUrl = getAuthorUrl(post).toLowerCase();
+      const authorName = getAuthorName(post);
       let prospect: ProspectInput | undefined;
 
       // Try to match by author profile URL
@@ -265,14 +332,8 @@ export async function POST(request: Request) {
         continue;
       }
 
-      // Skip posts older than 2 days
-      if (postDate < twoDaysAgo) {
-        skippedPosts.push({
-          url: postUrl,
-          reason: `Post older than 2 days (${postDate.toISOString()})`
-        });
-        continue;
-      }
+      // Check if post is older than 7 days - save as archived if so
+      const isOldPost = postDate < cutoffDate;
 
       // Save the post
       try {
@@ -282,9 +343,16 @@ export async function POST(request: Request) {
           postContent: postText,
           postedAt: postDate.toISOString(),
           authorName: authorName || prospect.fullName,
-          authorPhotoUrl: post.authorProfilePicture
+          authorPhotoUrl: getAuthorPhoto(post),
+          // If post is old, save it as already archived
+          isArchived: isOldPost,
+          archivedReason: isOldPost ? 'aged' : undefined
         });
-        savedPosts.push(saved);
+        if (isOldPost) {
+          savedArchivedPosts.push(saved);
+        } else {
+          savedActivePosts.push(saved);
+        }
       } catch (err) {
         console.log('Error saving post:', postUrl, err);
         skippedPosts.push({ url: postUrl, reason: 'Save failed (likely duplicate)' });
@@ -294,16 +362,28 @@ export async function POST(request: Request) {
     // Auto-archive any old posts in the database
     await autoArchiveOldPosts(2);
 
+    // Sample first post for debugging
+    const samplePost = posts[0] ? {
+      linkedinUrl: posts[0].linkedinUrl,
+      content: posts[0].content?.substring(0, 100),
+      postedAt: posts[0].postedAt,
+      author: posts[0].author
+    } : null;
+
     return NextResponse.json({
       success: true,
-      saved: savedPosts.length,
+      savedActive: savedActivePosts.length,
+      savedArchived: savedArchivedPosts.length,
+      saved: savedActivePosts.length + savedArchivedPosts.length,
       skipped: skippedPosts.length,
       totalFromApify: posts.length,
-      posts: savedPosts,
+      posts: savedActivePosts,
+      archivedPosts: savedArchivedPosts,
       skippedDetails: skippedPosts,
       debug: {
         watchedProfileCount: prospects.length,
-        watchedUrls: prospects.map(p => p.linkedinUrl)
+        watchedUrls: prospects.map(p => p.linkedinUrl),
+        samplePost
       }
     });
 

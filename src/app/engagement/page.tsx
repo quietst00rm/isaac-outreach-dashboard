@@ -189,14 +189,16 @@ export default function EngagementPage() {
         // Show results summary
         const summary = [
           `Apify returned: ${data.totalFromApify || 0} posts`,
-          `Saved: ${data.saved || 0}`,
+          `Saved active: ${data.savedActive || 0}`,
+          `Saved archived: ${data.savedArchived || 0}`,
           `Skipped: ${data.skipped || 0}`
         ];
 
         if (data.skippedDetails && data.skippedDetails.length > 0) {
           console.log('Skipped posts details:', data.skippedDetails);
           const reasons = data.skippedDetails.slice(0, 3).map(
-            (s: { url: string; reason: string }) => `- ${s.reason}`
+            (s: { url: string; reason: string; linkedinUrlField?: string; contentField?: string }) =>
+              `- ${s.reason}${s.linkedinUrlField ? ` (linkedinUrl: ${s.linkedinUrlField.substring(0, 30)}...)` : ''}`
           );
           if (data.skippedDetails.length > 3) {
             reasons.push(`... and ${data.skippedDetails.length - 3} more`);
@@ -264,14 +266,23 @@ export default function EngagementPage() {
   // Restore archived post
   const handleRestore = async (postId: string) => {
     try {
-      await fetch(`/api/engagement/posts/${postId}`, {
+      const res = await fetch(`/api/engagement/posts/${postId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'restore' })
       });
+
+      if (!res.ok) {
+        const error = await res.json();
+        console.error('Restore failed:', error);
+        alert('Failed to restore post: ' + (error.details || error.error));
+        return;
+      }
+
       await fetchEngagementPosts();
     } catch (error) {
       console.error('Error restoring post:', error);
+      alert('Failed to restore post');
     }
   };
 
@@ -515,12 +526,10 @@ export default function EngagementPage() {
                     </div>
                   </div>
 
-                  {/* Post Content */}
+                  {/* Post Content - Full content displayed */}
                   <div className="p-4 bg-gray-50 border-b border-gray-100">
                     <p className="text-gray-700 whitespace-pre-wrap text-sm">
-                      {post.postContent.length > 500
-                        ? post.postContent.substring(0, 500) + '...'
-                        : post.postContent}
+                      {post.postContent}
                     </p>
                   </div>
 
@@ -605,7 +614,12 @@ export default function EngagementPage() {
                       {getInitials(post.authorName)}
                     </div>
                     <div className="flex-1">
-                      <h3 className="font-medium text-gray-700">{post.authorName}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-medium text-gray-700">{post.authorName}</h3>
+                        <span className="text-xs text-gray-400">
+                          Posted {new Date(post.postedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      </div>
                       <p className="text-sm text-gray-500 mt-1 line-clamp-2">{post.postContent}</p>
                       <div className="flex items-center gap-2 mt-2">
                         <span className={`text-xs px-2 py-0.5 rounded ${
