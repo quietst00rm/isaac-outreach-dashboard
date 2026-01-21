@@ -4,14 +4,30 @@ import { saveEngagementPost, autoArchiveOldPosts, getWatchedProfiles } from '@/l
 const APIFY_TOKEN = process.env.APIFY_API_TOKEN || '';
 const APIFY_ACTOR = 'harvestapi~linkedin-profile-posts';
 
+// Apify response can have various field names depending on the actor version
 interface ApifyPost {
+  // Post URL variations
   postUrl?: string;
+  url?: string;
+  link?: string;
+  // Post content variations
   text?: string;
+  postText?: string;
+  content?: string;
+  // Date variations
   postedAt?: string;
   postedDate?: string;
+  date?: string;
+  timestamp?: string;
+  postedAtTimestamp?: number;
+  // Author variations
   authorName?: string;
+  author?: string;
+  fullName?: string;
   authorProfilePicture?: string;
   authorProfileUrl?: string;
+  profileUrl?: string;
+  authorUrl?: string;
 }
 
 interface ProspectInput {
@@ -125,14 +141,40 @@ export async function POST(request: Request) {
     const resultsResponse = await fetch(
       `https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${APIFY_TOKEN}`
     );
-    const posts: ApifyPost[] = await resultsResponse.json();
+    const rawPosts = await resultsResponse.json();
+
+    console.log('Apify returned', rawPosts.length, 'items');
+    if (rawPosts.length > 0) {
+      console.log('Sample post structure:', JSON.stringify(rawPosts[0], null, 2));
+    }
+
+    // Helper to extract field with fallbacks
+    const getPostUrl = (p: ApifyPost) => p.postUrl || p.url || p.link;
+    const getPostText = (p: ApifyPost) => p.text || p.postText || p.content;
+    const getPostedAt = (p: ApifyPost) => {
+      if (p.postedAt) return p.postedAt;
+      if (p.postedDate) return p.postedDate;
+      if (p.date) return p.date;
+      if (p.timestamp) return p.timestamp;
+      if (p.postedAtTimestamp) return new Date(p.postedAtTimestamp * 1000).toISOString();
+      return null;
+    };
+    const getAuthorName = (p: ApifyPost) => p.authorName || p.author || p.fullName;
+    const getAuthorUrl = (p: ApifyPost) => p.authorProfileUrl || p.profileUrl || p.authorUrl;
 
     // Create a map of LinkedIn URL to prospect for quick lookup
+    // Use multiple formats for better matching
     const prospectMap = new Map<string, ProspectInput>();
     prospects.forEach(p => {
-      // Normalize URL for matching
-      const normalizedUrl = p.linkedinUrl.replace(/\/$/, '').toLowerCase();
-      prospectMap.set(normalizedUrl, p);
+      // Store with various normalizations
+      const url = p.linkedinUrl.toLowerCase();
+      prospectMap.set(url, p);
+      prospectMap.set(url.replace(/\/$/, ''), p);
+      // Extract username and store
+      const match = url.match(/linkedin\.com\/in\/([^\/\?]+)/);
+      if (match) {
+        prospectMap.set(match[1].toLowerCase(), p);
+      }
     });
 
     // Process posts - filter by age and save
@@ -141,48 +183,94 @@ export async function POST(request: Request) {
 
     const savedPosts = [];
     const skippedPosts = [];
+    const posts: ApifyPost[] = rawPosts;
 
     for (const post of posts) {
-      if (!post.postUrl || !post.text) continue;
+      const postUrl = getPostUrl(post);
+      const postText = getPostText(post);
+
+      if (!postUrl || !postText) {
+        skippedPosts.push({
+          url: postUrl || 'unknown',
+          reason: `Missing ${!postUrl ? 'URL' : 'text'}`,
+          rawKeys: Object.keys(post)
+        });
+        continue;
+      }
 
       // Find the prospect this post belongs to
-      const authorUrl = post.authorProfileUrl?.replace(/\/$/, '').toLowerCase() || '';
+      const authorUrl = getAuthorUrl(post)?.toLowerCase() || '';
+      const authorName = getAuthorName(post) || '';
       let prospect: ProspectInput | undefined;
 
       // Try to match by author profile URL
-      for (const [url, p] of prospectMap.entries()) {
-        if (authorUrl.includes(url) || url.includes(authorUrl)) {
-          prospect = p;
-          break;
+      if (authorUrl) {
+        // Try direct match
+        prospect = prospectMap.get(authorUrl) || prospectMap.get(authorUrl.replace(/\/$/, ''));
+
+        // Try extracting username
+        if (!prospect) {
+          const match = authorUrl.match(/linkedin\.com\/in\/([^\/\?]+)/);
+          if (match) {
+            prospect = prospectMap.get(match[1].toLowerCase());
+          }
         }
       }
 
-      if (!prospect) {
-        // If we couldn't match, try to find by author name
+      // If still no match, try by name
+      if (!prospect && authorName) {
+        const nameLower = authorName.toLowerCase();
         for (const p of prospects) {
-          if (post.authorName?.toLowerCase().includes(p.fullName.toLowerCase().split(' ')[0])) {
+          const firstName = p.fullName.toLowerCase().split(' ')[0];
+          if (nameLower.includes(firstName) || firstName.includes(nameLower.split(' ')[0])) {
             prospect = p;
             break;
           }
         }
       }
 
+      // Last resort: if only one watched profile, assign to them
+      if (!prospect && prospects.length === 1) {
+        prospect = prospects[0];
+      }
+
       if (!prospect) {
-        skippedPosts.push({ url: post.postUrl, reason: 'Could not match to prospect' });
+        skippedPosts.push({
+          url: postUrl,
+          reason: 'Could not match to prospect',
+          authorUrl,
+          authorName
+        });
         continue;
       }
 
-      const postedAt = post.postedAt || post.postedDate;
+      const postedAt = getPostedAt(post);
       if (!postedAt) {
-        skippedPosts.push({ url: post.postUrl, reason: 'No posted date' });
+        skippedPosts.push({
+          url: postUrl,
+          reason: 'No posted date',
+          rawKeys: Object.keys(post)
+        });
         continue;
       }
 
       const postDate = new Date(postedAt);
 
-      // Skip posts older than 2 days - they'll be archived
+      // Check if date is valid
+      if (isNaN(postDate.getTime())) {
+        skippedPosts.push({
+          url: postUrl,
+          reason: `Invalid date: ${postedAt}`
+        });
+        continue;
+      }
+
+      // Skip posts older than 2 days
       if (postDate < twoDaysAgo) {
-        skippedPosts.push({ url: post.postUrl, reason: 'Post older than 2 days' });
+        skippedPosts.push({
+          url: postUrl,
+          reason: `Post older than 2 days (${postDate.toISOString()})`
+        });
         continue;
       }
 
@@ -190,16 +278,16 @@ export async function POST(request: Request) {
       try {
         const saved = await saveEngagementPost({
           prospectId: prospect.id,
-          postUrl: post.postUrl,
-          postContent: post.text,
+          postUrl: postUrl,
+          postContent: postText,
           postedAt: postDate.toISOString(),
-          authorName: post.authorName || prospect.fullName,
+          authorName: authorName || prospect.fullName,
           authorPhotoUrl: post.authorProfilePicture
         });
         savedPosts.push(saved);
       } catch (err) {
-        // Likely a duplicate - skip
-        console.log('Skipping duplicate post:', post.postUrl);
+        console.log('Error saving post:', postUrl, err);
+        skippedPosts.push({ url: postUrl, reason: 'Save failed (likely duplicate)' });
       }
     }
 
@@ -210,8 +298,13 @@ export async function POST(request: Request) {
       success: true,
       saved: savedPosts.length,
       skipped: skippedPosts.length,
+      totalFromApify: posts.length,
       posts: savedPosts,
-      skippedDetails: skippedPosts
+      skippedDetails: skippedPosts,
+      debug: {
+        watchedProfileCount: prospects.length,
+        watchedUrls: prospects.map(p => p.linkedinUrl)
+      }
     });
 
   } catch (error) {

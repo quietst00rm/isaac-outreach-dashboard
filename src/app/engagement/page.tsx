@@ -184,7 +184,25 @@ export default function EngagementPage() {
 
       if (res.ok) {
         const data = await res.json();
-        console.log('Fetched posts:', data);
+        console.log('Fetch posts result:', data);
+
+        // Show results summary
+        const summary = [
+          `Apify returned: ${data.totalFromApify || 0} posts`,
+          `Saved: ${data.saved || 0}`,
+          `Skipped: ${data.skipped || 0}`
+        ];
+
+        if (data.skippedDetails && data.skippedDetails.length > 0) {
+          console.log('Skipped posts details:', data.skippedDetails);
+          const reasons = data.skippedDetails.slice(0, 3).map(
+            (s: { url: string; reason: string }) => `- ${s.reason}`
+          );
+          if (data.skippedDetails.length > 3) {
+            reasons.push(`... and ${data.skippedDetails.length - 3} more`);
+          }
+          summary.push('\nSkip reasons:', ...reasons);
+        }
 
         // Generate comments for new posts
         if (data.posts && data.posts.length > 0) {
@@ -208,12 +226,16 @@ export default function EngagementPage() {
             body: JSON.stringify({ posts: postsToGenerate })
           });
           setIsGeneratingComments(false);
+          summary.push('\nComments generated for new posts');
         }
+
+        alert(summary.join('\n'));
 
         // Refresh posts list
         await fetchEngagementPosts();
       } else {
         const error = await res.json();
+        console.error('Fetch posts error:', error);
         alert(error.error || 'Failed to fetch posts');
       }
     } catch (error) {
