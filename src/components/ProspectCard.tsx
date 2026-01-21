@@ -6,6 +6,9 @@ import type { ProspectWithPipeline, PipelineStatus } from '@/types';
 interface ProspectCardProps {
   prospect: ProspectWithPipeline;
   onClick: () => void;
+  isSelected?: boolean;
+  onSelect?: (id: string, selected: boolean) => void;
+  selectionMode?: boolean;
 }
 
 const statusColors: Record<PipelineStatus, string> = {
@@ -41,16 +44,35 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
-export function ProspectCard({ prospect, onClick }: ProspectCardProps) {
+export function ProspectCard({ prospect, onClick, isSelected, onSelect, selectionMode }: ProspectCardProps) {
   const status = prospect.pipeline?.status || 'not_contacted';
   const hasMessages = prospect.messages && prospect.messages.length > 0;
+
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSelect?.(prospect.id, !isSelected);
+  };
 
   return (
     <div
       onClick={onClick}
-      className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
+      className={`bg-white rounded-lg border p-4 hover:shadow-md transition-shadow cursor-pointer ${
+        isSelected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200'
+      }`}
     >
       <div className="flex items-start gap-3 mb-3">
+        {/* Selection Checkbox */}
+        {selectionMode && (
+          <div className="flex-shrink-0" onClick={handleCheckboxClick}>
+            <input
+              type="checkbox"
+              checked={isSelected || false}
+              onChange={() => {}}
+              className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+          </div>
+        )}
+
         {/* Profile Image */}
         <div className="flex-shrink-0">
           {prospect.profilePicUrl ? (
@@ -108,7 +130,24 @@ export function ProspectCard({ prospect, onClick }: ProspectCardProps) {
       </div>
 
       <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-        <div className="flex items-center">
+        <div className="flex items-center gap-2">
+          {/* Segment Badge */}
+          {prospect.icpScoreBreakdown?.segment && (
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+              prospect.icpScoreBreakdown.segment === 'agency'
+                ? 'bg-blue-100 text-blue-700'
+                : prospect.icpScoreBreakdown.segment === 'merchant'
+                ? 'bg-orange-100 text-orange-700'
+                : 'bg-gray-100 text-gray-600'
+            }`}>
+              {prospect.icpScoreBreakdown.segment === 'agency'
+                ? 'Agency'
+                : prospect.icpScoreBreakdown.segment === 'merchant'
+                ? 'Merchant'
+                : 'Freelancer'}
+            </span>
+          )}
+          {/* ICP Score Badge */}
           <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
             prospect.icpScore >= 70 ? 'bg-green-100 text-green-700' :
             prospect.icpScore >= 40 ? 'bg-yellow-100 text-yellow-700' :

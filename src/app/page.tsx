@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { ProspectCard, ProspectDetail, ImportModal, PipelineBoard, AddProspectModal, BulkUrlImportModal } from '@/components';
-import type { ProspectWithPipeline, PipelineStatus, Prospect, PipelineRecord, FilterOptions } from '@/types';
+import type { ProspectWithPipeline, PipelineStatus, Prospect, PipelineRecord, FilterOptions, SegmentFilter } from '@/types';
 import {
   getProspects,
   bulkImportProspects,
@@ -25,8 +25,12 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRecalculatingICP, setIsRecalculatingICP] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>({
     status: 'all',
+    segment: 'all',
     search: '',
   });
 
@@ -59,6 +63,12 @@ export default function Dashboard() {
       if (filters.status && filters.status !== 'all') {
         const prospectStatus = prospect.pipeline?.status || 'not_contacted';
         if (prospectStatus !== filters.status) return false;
+      }
+
+      // Segment filter
+      if (filters.segment && filters.segment !== 'all') {
+        const prospectSegment = prospect.icpScoreBreakdown?.segment || 'unknown';
+        if (prospectSegment !== filters.segment) return false;
       }
 
       // Search filter
@@ -497,6 +507,130 @@ export default function Dashboard() {
     }
   };
 
+  // Selection handlers
+  const handleSelectProspect = (id: string, selected: boolean) => {
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (selected) {
+        newSet.add(id);
+      } else {
+        newSet.delete(id);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    const allIds = filteredProspects.map(p => p.id);
+    setSelectedIds(new Set(allIds));
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelectionMode = () => {
+    if (selectionMode) {
+      setSelectedIds(new Set());
+    }
+    setSelectionMode(!selectionMode);
+  };
+
+  // Bulk delete handler
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+
+    if (!confirm(`Are you sure you want to delete ${selectedIds.size} prospect(s)? This action cannot be undone.`)) {
+      return;
+    }
+
+    setIsBulkProcessing(true);
+
+    try {
+      if (useSupabase) {
+        const response = await fetch('/api/prospects/bulk-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: Array.from(selectedIds) }),
+        });
+
+        if (!response.ok) {
+          const result = await response.json();
+          throw new Error(result.error || 'Failed to delete prospects');
+        }
+
+        // Reload from database
+        const data = await getProspects();
+        const transformed = transformDbToApp(data) as ProspectWithPipeline[];
+        setProspects(transformed);
+      } else {
+        // Local delete
+        setProspects(prev => prev.filter(p => !selectedIds.has(p.id)));
+      }
+
+      setSelectedIds(new Set());
+      setSelectionMode(false);
+    } catch (error) {
+      console.error('Error deleting prospects:', error);
+      alert('Failed to delete prospects. Check console for details.');
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  // Bulk status change handler
+  const handleBulkStatusChange = async (newStatus: PipelineStatus) => {
+    if (selectedIds.size === 0) return;
+
+    setIsBulkProcessing(true);
+
+    try {
+      if (useSupabase) {
+        const response = await fetch('/api/prospects/bulk-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: Array.from(selectedIds), status: newStatus }),
+        });
+
+        if (!response.ok) {
+          const result = await response.json();
+          throw new Error(result.error || 'Failed to update status');
+        }
+
+        // Reload from database
+        const data = await getProspects();
+        const transformed = transformDbToApp(data) as ProspectWithPipeline[];
+        setProspects(transformed);
+      } else {
+        // Local update
+        setProspects(prev => prev.map(p => {
+          if (selectedIds.has(p.id)) {
+            return {
+              ...p,
+              pipeline: {
+                ...p.pipeline,
+                id: p.pipeline?.id || `pipeline-${Date.now()}`,
+                prospectId: p.id,
+                status: newStatus,
+                createdAt: p.pipeline?.createdAt || new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            };
+          }
+          return p;
+        }));
+      }
+
+      setSelectedIds(new Set());
+      setSelectionMode(false);
+    } catch (error) {
+      console.error('Error updating status:', error);
+      alert('Failed to update status. Check console for details.');
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
   // Show loading state
   if (isLoading) {
     return (
@@ -536,6 +670,20 @@ export default function Dashboard() {
             </div>
 
             <div className="flex items-center space-x-3">
+              {/* Selection Mode Toggle */}
+              <button
+                onClick={toggleSelectionMode}
+                className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  selectionMode
+                    ? 'bg-gray-800 text-white hover:bg-gray-900'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+                {selectionMode ? 'Cancel Select' : 'Select'}
+              </button>
               <button
                 onClick={() => setShowAddModal(true)}
                 className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
@@ -651,6 +799,20 @@ export default function Dashboard() {
               </select>
             </div>
 
+            {/* Segment Filter */}
+            <div>
+              <select
+                value={filters.segment || 'all'}
+                onChange={(e) => setFilters({ ...filters, segment: e.target.value as SegmentFilter })}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="all">All Segments</option>
+                <option value="agency">Agency</option>
+                <option value="merchant">Merchant</option>
+                <option value="unknown">Freelancer</option>
+              </select>
+            </div>
+
             {/* View Toggle */}
             <div className="flex rounded-lg border border-gray-300 overflow-hidden">
               <button
@@ -681,6 +843,83 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Bulk Actions Bar */}
+        {selectionMode && (
+          <div className="bg-gray-800 rounded-lg p-4 mb-6 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="text-white font-medium">
+                {selectedIds.size} selected
+              </span>
+              <button
+                onClick={handleSelectAll}
+                className="text-sm text-gray-300 hover:text-white"
+              >
+                Select All ({filteredProspects.length})
+              </button>
+              {selectedIds.size > 0 && (
+                <button
+                  onClick={handleDeselectAll}
+                  className="text-sm text-gray-300 hover:text-white"
+                >
+                  Deselect All
+                </button>
+              )}
+            </div>
+
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-3">
+                {/* Status Change Dropdown */}
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleBulkStatusChange(e.target.value as PipelineStatus);
+                      e.target.value = '';
+                    }
+                  }}
+                  disabled={isBulkProcessing}
+                  className="px-3 py-2 bg-white text-gray-900 text-sm font-medium rounded-lg border-0 focus:ring-2 focus:ring-blue-500"
+                  defaultValue=""
+                >
+                  <option value="" disabled>Change Status</option>
+                  <option value="not_contacted">Not Contacted</option>
+                  <option value="visited">Visited</option>
+                  <option value="connection_sent">Request Sent</option>
+                  <option value="connected">Connected</option>
+                  <option value="message_sent">Message Sent</option>
+                  <option value="responded">Responded</option>
+                  <option value="call_booked">Call Booked</option>
+                  <option value="closed_won">Won</option>
+                  <option value="closed_lost">Lost</option>
+                </select>
+
+                {/* Delete Button */}
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={isBulkProcessing}
+                  className="inline-flex items-center px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                >
+                  {isBulkProcessing ? (
+                    <>
+                      <svg className="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Content */}
         {prospects.length === 0 ? (
           <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
@@ -707,7 +946,10 @@ export default function Dashboard() {
               <ProspectCard
                 key={prospect.id}
                 prospect={prospect}
-                onClick={() => setSelectedProspect(prospect)}
+                onClick={() => !selectionMode && setSelectedProspect(prospect)}
+                selectionMode={selectionMode}
+                isSelected={selectedIds.has(prospect.id)}
+                onSelect={handleSelectProspect}
               />
             ))}
             {filteredProspects.length === 0 && (

@@ -347,3 +347,37 @@ export async function deleteProspect(id: string) {
 
   if (error) throw error;
 }
+
+// Bulk delete prospects
+export async function bulkDeleteProspects(ids: string[]) {
+  const client = getSupabaseClient();
+  const { error } = await client
+    .from('prospects')
+    .delete()
+    .in('id', ids);
+
+  if (error) throw error;
+}
+
+// Bulk update pipeline status
+export async function bulkUpdatePipelineStatus(
+  prospectIds: string[],
+  status: string
+) {
+  const client = getSupabaseClient();
+
+  // Create upsert records for each prospect
+  const pipelineRecords = prospectIds.map(id => ({
+    prospect_id: id,
+    status: status,
+    updated_at: new Date().toISOString()
+  }));
+
+  const { error } = await client
+    .from('pipeline_status')
+    .upsert(pipelineRecords, {
+      onConflict: 'prospect_id'
+    });
+
+  if (error) throw error;
+}

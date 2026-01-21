@@ -144,8 +144,11 @@ export interface RawScrapedRow {
 }
 
 // Filter/sort options
+export type SegmentFilter = 'agency' | 'merchant' | 'unknown' | 'all';
+
 export interface FilterOptions {
   status?: PipelineStatus | 'all';
+  segment?: SegmentFilter;
   industry?: string;
   search?: string;
   icpScoreMin?: number;
