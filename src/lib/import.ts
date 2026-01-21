@@ -106,14 +106,21 @@ export function calculateICPScoreWithBreakdown(prospect: Partial<Prospect>): ICP
 
   // ============================================================================
   // STEP 1: Detect segment (Agency vs Merchant)
+  // More lenient detection - keywords alone can indicate segment
   // ============================================================================
-  const isAgency = AGENCY_KEYWORDS.some(kw => combinedText.includes(kw)) &&
-    (companyName.includes('agency') || companyName.includes('partner') ||
-     companyName.includes('consulting') || companyName.includes('digital') ||
-     about.includes('agency') || about.includes('clients'));
+  const agencyIndicators = ['agency', 'partner', 'consulting', 'consultancy', 'services'];
+  const hasAgencyKeywords = AGENCY_KEYWORDS.some(kw => combinedText.includes(kw));
+  const hasAgencyIndicators = agencyIndicators.some(ind =>
+    companyName.includes(ind) || about.includes(ind) || headline.includes(ind)
+  );
 
-  const isMerchant = MERCHANT_KEYWORDS.some(kw => combinedText.includes(kw)) &&
-    !isAgency; // Merchants are NOT agencies
+  // Strong agency signal: agency indicators in company name/about
+  // Weak agency signal: just has shopify/ecommerce keywords + works with "clients"
+  const isAgency = hasAgencyIndicators ||
+    (hasAgencyKeywords && (about.includes('clients') || about.includes('brands we')));
+
+  const hasMerchantKeywords = MERCHANT_KEYWORDS.some(kw => combinedText.includes(kw));
+  const isMerchant = hasMerchantKeywords && !isAgency;
 
   if (isAgency) {
     breakdown.segment = 'agency';
@@ -122,79 +129,67 @@ export function calculateICPScoreWithBreakdown(prospect: Partial<Prospect>): ICP
   }
 
   // ============================================================================
-  // STEP 2: Score title authority (0-35 points)
+  // STEP 2: Score title authority (0-40 points)
+  // Decision-maker titles are the primary scoring factor
   // ============================================================================
-  if (breakdown.segment === 'agency') {
-    // Agency title scoring
-    if (AGENCY_TOP_TITLES.some(t => title.includes(t))) {
-      breakdown.titleAuthority = 35;
-    } else if (AGENCY_SECONDARY_TITLES.some(t => title.includes(t))) {
-      breakdown.titleAuthority = 25;
-    } else if (title.includes('director') || title.includes('head of') || title.includes('vp')) {
-      breakdown.titleAuthority = 15;
-    } else if (title.includes('manager') || title.includes('lead')) {
-      breakdown.titleAuthority = 5;
-    }
-  } else if (breakdown.segment === 'merchant') {
-    // Merchant title scoring
-    if (MERCHANT_TOP_TITLES.some(t => title.includes(t))) {
-      breakdown.titleAuthority = 35;
-    } else if (MERCHANT_SECONDARY_TITLES.some(t => title.includes(t))) {
-      breakdown.titleAuthority = 25;
-    } else if (title.includes('director') || title.includes('head of') || title.includes('vp')) {
-      breakdown.titleAuthority = 15;
-    } else if (title.includes('manager') || title.includes('lead')) {
-      breakdown.titleAuthority = 5;
-    }
-  } else {
-    // Unknown segment - still score decision-maker titles
-    const allTopTitles = [...new Set([...AGENCY_TOP_TITLES, ...MERCHANT_TOP_TITLES])];
-    if (allTopTitles.some(t => title.includes(t))) {
-      breakdown.titleAuthority = 20; // Lower score for unknown segment
-    } else if (title.includes('director') || title.includes('head of') || title.includes('vp')) {
-      breakdown.titleAuthority = 10;
-    }
+  const allTopTitles = [...new Set([...AGENCY_TOP_TITLES, ...MERCHANT_TOP_TITLES])];
+  const allSecondaryTitles = [...new Set([...AGENCY_SECONDARY_TITLES, ...MERCHANT_SECONDARY_TITLES])];
+
+  // Score titles the same regardless of segment - title authority is universal
+  if (allTopTitles.some(t => title.includes(t))) {
+    breakdown.titleAuthority = 40; // Increased from 35
+  } else if (allSecondaryTitles.some(t => title.includes(t))) {
+    breakdown.titleAuthority = 30; // Increased from 25
+  } else if (title.includes('director') || title.includes('head of') || title.includes('vp')) {
+    breakdown.titleAuthority = 20; // Increased from 15
+  } else if (title.includes('manager') || title.includes('lead') || title.includes('senior')) {
+    breakdown.titleAuthority = 10; // Increased from 5
   }
 
   // ============================================================================
-  // STEP 3: Score company signals (0-30 points)
+  // STEP 3: Score company signals (0-35 points)
   // ============================================================================
   let signalScore = 0;
 
   // Shopify-related signals (highest value)
-  if (combinedText.includes('shopify plus')) signalScore += 15;
-  else if (combinedText.includes('shopify')) signalScore += 12;
+  if (combinedText.includes('shopify plus')) signalScore += 18;
+  else if (combinedText.includes('shopify')) signalScore += 15;
 
   // E-commerce/DTC signals
   if (combinedText.includes('dtc') || combinedText.includes('d2c') ||
       combinedText.includes('direct-to-consumer') || combinedText.includes('direct to consumer')) {
-    signalScore += 10;
+    signalScore += 12;
   }
 
   // Other platform signals
   if (combinedText.includes('e-commerce') || combinedText.includes('ecommerce')) {
-    signalScore += 8;
+    signalScore += 10;
   }
 
-  // Shipping/fulfillment signals (for merchants)
-  if (breakdown.segment === 'merchant') {
-    if (combinedText.includes('shipping') || combinedText.includes('fulfillment') ||
-        combinedText.includes('logistics') || combinedText.includes('3pl')) {
-      signalScore += 5;
-    }
+  // Shipping/fulfillment signals (relevant for both segments)
+  if (combinedText.includes('shipping') || combinedText.includes('fulfillment') ||
+      combinedText.includes('logistics') || combinedText.includes('3pl')) {
+    signalScore += 8;
   }
 
   // Agency-specific signals
   if (breakdown.segment === 'agency') {
     if (combinedText.includes('shopify partner') || combinedText.includes('shopify plus partner')) {
-      signalScore += 10;
+      signalScore += 12;
     }
   }
 
-  breakdown.companySignals = Math.min(signalScore, 30);
+  // General commerce signals
+  if (combinedText.includes('retail') || combinedText.includes('online store') ||
+      combinedText.includes('brand') || combinedText.includes('merchant')) {
+    signalScore += 5;
+  }
+
+  breakdown.companySignals = Math.min(signalScore, 35);
 
   // ============================================================================
-  // STEP 4: Score company size (-15 to +20 points)
+  // STEP 4: Score company size (-10 to +15 points)
+  // Reduced penalties since size data is often missing/unreliable
   // ============================================================================
   const companySize = parseCompanySize(prospect.companySize);
 
@@ -202,31 +197,37 @@ export function calculateICPScoreWithBreakdown(prospect: Partial<Prospect>): ICP
     if (breakdown.segment === 'agency') {
       // Agency sweet spot: 10-100 employees
       if (companySize >= 10 && companySize <= 100) {
-        breakdown.companySize = 20; // Perfect fit
+        breakdown.companySize = 15; // Perfect fit
       } else if (companySize > 100 && companySize <= 200) {
         breakdown.companySize = 10; // Still good
       } else if (companySize > 200 && companySize <= 500) {
-        breakdown.companySize = 0; // Neutral
+        breakdown.companySize = 5; // Okay
       } else if (companySize > 500) {
-        breakdown.companySize = -15; // Too big (large consultancy)
+        breakdown.companySize = -10; // Too big (reduced penalty)
       } else if (companySize < 10 && companySize >= 2) {
         breakdown.companySize = 5; // Small but okay
       } else if (companySize === 1) {
-        breakdown.companySize = -10; // Solo freelancer
+        breakdown.companySize = -5; // Solo freelancer (reduced penalty)
       }
     } else if (breakdown.segment === 'merchant') {
       // Merchant sweet spot: 10-200 employees
       if (companySize >= 10 && companySize <= 200) {
-        breakdown.companySize = 20; // Perfect fit
+        breakdown.companySize = 15; // Perfect fit
       } else if (companySize > 200 && companySize <= 500) {
         breakdown.companySize = 10; // Still good
       } else if (companySize > 500) {
-        breakdown.companySize = 0; // Large enterprise, may have different needs
+        breakdown.companySize = 5; // Large enterprise
       } else if (companySize < 10 && companySize >= 2) {
         breakdown.companySize = 5; // Small but growing
       } else if (companySize === 1) {
-        breakdown.companySize = -5; // Very small
+        breakdown.companySize = 0; // Very small, neutral
       }
+    }
+  } else {
+    // No size data - give a small neutral bonus rather than 0
+    // Most prospects in the ICP have some company presence
+    if (breakdown.segment !== 'unknown') {
+      breakdown.companySize = 5;
     }
   }
 

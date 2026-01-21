@@ -36,12 +36,12 @@ export interface RecentPost {
 
 export interface ICPScoreBreakdown {
   segment: 'agency' | 'merchant' | 'unknown';
-  titleAuthority: number;      // 0-35: Decision-making power
-  companySignals: number;      // 0-30: Shopify/e-commerce keywords
-  companySize: number;         // -15 to +20: Size fit penalty/bonus
+  titleAuthority: number;      // 0-40: Decision-making power (primary factor)
+  companySignals: number;      // 0-35: Shopify/e-commerce keywords
+  companySize: number;         // -10 to +15: Size fit penalty/bonus
   productCategory: number;     // 0-10: Minor boost for known categories
   profileCompleteness: number; // 0-5: Has about summary
-  total: number;
+  total: number;               // Max ~105, clamped to 0-100
 }
 
 export interface Prospect {
