@@ -337,36 +337,168 @@ export function calculateICPScoreWithBreakdown(prospect: Partial<Prospect>): ICP
   // STEP 2: Score title authority (0-40 points)
   // Decision-maker titles are the primary scoring factor
   //
-  // MATCHING LOGIC:
-  // - All titles are lowercased before comparison
-  // - We check if ANY of the target title patterns appear in the full title string
-  // - This handles compound titles like "CEO & Founder", "Co-Founder & CEO", etc.
-  // - Both abbreviations (CEO) and full forms (Chief Executive Officer) are matched
+  // FIX (2026-01-20): Complete rewrite with new scoring tiers and debug logging.
+  // Previous implementation was failing for spelled-out titles like "Chief Executive Officer".
+  //
+  // SCORING TIERS:
+  // 40 pts - Top Decision Makers (CEO, Founder, Owner, COO, President, Managing Partner)
+  // 30 pts - Partners (general partner role)
+  // 25 pts - Senior Leaders (VP, other Chiefs, Head of, Director of Partnerships/Client)
+  // 15 pts - Directors (general)
+  // 10 pts - Senior Individual Contributors
+  // 0 pts  - Everyone else
   // ============================================================================
-  const allTopTitles = [...new Set([...AGENCY_TOP_TITLES, ...MERCHANT_TOP_TITLES])];
-  const allSecondaryTitles = [...new Set([...AGENCY_SECONDARY_TITLES, ...MERCHANT_SECONDARY_TITLES])];
 
-  // Helper function to check if a title matches any pattern in the list
-  // This is more robust than simple includes() for edge cases
-  const matchesAnyTitle = (titleStr: string, patterns: string[]): boolean => {
-    const normalizedTitle = titleStr.toLowerCase().trim();
-    return patterns.some(pattern => {
-      const normalizedPattern = pattern.toLowerCase().trim();
-      // Check if the pattern appears in the title
-      // This handles "CEO & Founder", "Chief Executive Officer at Company", etc.
-      return normalizedTitle.includes(normalizedPattern);
-    });
+  // Combine job_title and headline for matching (check both)
+  const jobTitle = (prospect.jobTitle || '').toLowerCase().trim();
+  const headlineForTitle = (prospect.headline || '').toLowerCase().trim();
+  const combinedTitleText = `${jobTitle} ${headlineForTitle}`;
+
+  // Helper to check if text contains any pattern (case-insensitive)
+  const containsAny = (text: string, patterns: string[]): string | null => {
+    const normalizedText = text.toLowerCase();
+    for (const pattern of patterns) {
+      if (normalizedText.includes(pattern.toLowerCase())) {
+        return pattern;
+      }
+    }
+    return null;
   };
 
-  // Score titles the same regardless of segment - title authority is universal
-  if (matchesAnyTitle(title, allTopTitles)) {
-    breakdown.titleAuthority = 40;
-  } else if (matchesAnyTitle(title, allSecondaryTitles)) {
-    breakdown.titleAuthority = 30;
-  } else if (title.includes('director') || title.includes('head of') || title.includes('vp') || title.includes('vice president')) {
-    breakdown.titleAuthority = 20;
-  } else if (title.includes('manager') || title.includes('lead') || title.includes('senior')) {
-    breakdown.titleAuthority = 10;
+  // TIER 1: 40 POINTS - Top Decision Makers
+  // NOTE: Use word-boundary-aware patterns to avoid false matches
+  // (e.g., "coordinator" should NOT match "coo", "vice president" should NOT match "president")
+  const tier1Patterns = [
+    'chief executive officer', 'chief executive',
+    'chief operating officer',
+    'founder', 'co-founder', 'cofounder', 'co founder',
+    'owner', 'co-owner', 'coowner',
+    'managing partner',
+    'general partner'
+  ];
+
+  // Patterns that need word boundary checking (start of string or after space/punctuation)
+  const tier1WordBoundaryPatterns = [
+    'ceo',      // Must not match "geocoding" etc
+    'coo',      // Must not match "coordinator"
+    'president' // Must not match "vice president" (handled separately)
+  ];
+
+  // Helper to check if pattern exists with word boundary (not in middle of word)
+  const containsWordBoundary = (text: string, pattern: string): boolean => {
+    const lower = text.toLowerCase();
+    const patternLower = pattern.toLowerCase();
+    const idx = lower.indexOf(patternLower);
+    if (idx === -1) return false;
+
+    // Check left boundary (start of string or non-alphanumeric)
+    const leftOk = idx === 0 || !/[a-z0-9]/.test(lower[idx - 1]);
+    // Check right boundary (end of string or non-alphanumeric)
+    const rightOk = idx + patternLower.length >= lower.length ||
+                   !/[a-z0-9]/.test(lower[idx + patternLower.length]);
+    return leftOk && rightOk;
+  };
+
+  // TIER 2: 30 POINTS - Partners
+  // Note: "partner" checked with exclusions for director/managing/general partner
+  const tier2Patterns = [
+    'partner'
+  ];
+
+  // Exclusions for tier 2 partner - these should NOT trigger tier 2
+  const tier2Exclusions = [
+    'managing partner', 'general partner',  // These are tier 1
+    'director of partner', 'director of partnerships', 'partnerships director' // These are tier 3
+  ];
+
+  // TIER 3: 25 POINTS - Senior Leaders
+  const tier3Patterns = [
+    'vice president',  // Checked BEFORE president in tier 1
+    'vp ', 'vp,', 'vp/', 'vp-', ' vp',  // VP with delimiter to avoid false matches
+    'chief ',  // Any other chief (CMO, CRO, CTO, CGO, CCO, etc.) - note trailing space
+    'head of',
+    'director of partnerships',
+    'director of partner',
+    'director of client',
+    'director of business development'
+  ];
+
+  // TIER 4: 15 POINTS - Directors
+  const tier4Patterns = [
+    'director',
+    'general manager',
+    ' gm ',  // GM with spaces to avoid false matches
+    ' gm,',
+    ' gm/'
+  ];
+
+  // TIER 5: 10 POINTS - Senior Individual Contributors
+  const tier5Patterns = [
+    'senior manager',
+    'senior director',
+    'lead ',
+    'senior '
+  ];
+
+  let matchedPattern: string | null = null;
+  let titleScore = 0;
+
+  // Check tiers in order (highest first) - use HIGHEST score if multiple match
+  // TIER 1: Check standard patterns + word-boundary patterns
+  const tier1Match = containsAny(combinedTitleText, tier1Patterns);
+  const tier1WordMatch = tier1WordBoundaryPatterns.find(p => {
+    // For "president", exclude "vice president"
+    if (p === 'president' && combinedTitleText.includes('vice president')) {
+      return false;
+    }
+    return containsWordBoundary(combinedTitleText, p);
+  });
+
+  if (tier1Match) {
+    titleScore = 40;
+    matchedPattern = tier1Match;
+  } else if (tier1WordMatch) {
+    titleScore = 40;
+    matchedPattern = tier1WordMatch;
+  } else {
+    // Check tier 3 BEFORE tier 2 to catch "director of partnerships" etc
+    const tier3Match = containsAny(combinedTitleText, tier3Patterns);
+    if (tier3Match) {
+      titleScore = 25;
+      matchedPattern = tier3Match;
+    } else {
+      // Check tier 2 (partner) but NOT if any exclusion applies
+      const tier2Match = containsAny(combinedTitleText, tier2Patterns);
+      const tier2ExcludeMatch = containsAny(combinedTitleText, tier2Exclusions);
+      if (tier2Match && !tier2ExcludeMatch) {
+        titleScore = 30;
+        matchedPattern = tier2Match;
+      } else {
+        // Check tier 4
+        const tier4Match = containsAny(combinedTitleText, tier4Patterns);
+        if (tier4Match) {
+          titleScore = 15;
+          matchedPattern = tier4Match;
+        } else {
+          // Check tier 5
+          const tier5Match = containsAny(combinedTitleText, tier5Patterns);
+          if (tier5Match) {
+            titleScore = 10;
+            matchedPattern = tier5Match;
+          }
+        }
+      }
+    }
+  }
+
+  breakdown.titleAuthority = titleScore;
+
+  // Debug logging (only in development or when DEBUG_ICP is set)
+  if (process.env.NODE_ENV === 'development' || process.env.DEBUG_ICP) {
+    const name = prospect.fullName || 'Unknown';
+    if (titleScore > 0 || (jobTitle && jobTitle.includes('chief'))) {
+      console.log(`[ICP Title] ${name}: job_title="${jobTitle}" headline="${headlineForTitle.substring(0, 50)}..." → ${titleScore} pts (matched: "${matchedPattern || 'none'}")`);
+    }
   }
 
   // ============================================================================
