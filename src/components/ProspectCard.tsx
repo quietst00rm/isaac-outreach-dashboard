@@ -1,5 +1,6 @@
 'use client';
 
+// ProspectCard - Compact card component for prospect display
 import Image from 'next/image';
 import type { ProspectWithPipeline, PipelineStatus } from '@/types';
 
