@@ -156,3 +156,23 @@ export interface FilterOptions {
 
 export type SortField = 'name' | 'company' | 'icpScore' | 'lastActivity' | 'status';
 export type SortDirection = 'asc' | 'desc';
+
+// Engagement posts for commenting workflow
+export interface EngagementPost {
+  id: string;
+  prospectId: string;
+  postUrl: string;
+  postContent: string;
+  postedAt: string;
+  authorName: string;
+  authorPhotoUrl?: string;
+  status: 'active' | 'archived';
+  archivedReason?: 'aged' | 'engaged';
+  generatedComments: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EngagementPostWithProspect extends EngagementPost {
+  prospect?: Prospect;
+}

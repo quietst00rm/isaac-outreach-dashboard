@@ -79,11 +79,30 @@ CREATE TABLE IF NOT EXISTS generated_messages (
   used BOOLEAN DEFAULT FALSE
 );
 
+-- Engagement posts table for comment workflow
+CREATE TABLE IF NOT EXISTS engagement_posts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  prospect_id UUID REFERENCES prospects(id) ON DELETE CASCADE,
+  post_url TEXT NOT NULL,
+  post_content TEXT NOT NULL,
+  posted_at TIMESTAMPTZ NOT NULL,
+  author_name TEXT NOT NULL,
+  author_photo_url TEXT,
+  status TEXT DEFAULT 'active',
+  archived_reason TEXT,
+  generated_comments JSONB DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(post_url)
+);
+
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_prospects_linkedin_url ON prospects(linkedin_url);
 CREATE INDEX IF NOT EXISTS idx_pipeline_status_prospect_id ON pipeline_status(prospect_id);
 CREATE INDEX IF NOT EXISTS idx_pipeline_status_status ON pipeline_status(status);
 CREATE INDEX IF NOT EXISTS idx_generated_messages_prospect_id ON generated_messages(prospect_id);
+CREATE INDEX IF NOT EXISTS idx_engagement_posts_prospect_id ON engagement_posts(prospect_id);
+CREATE INDEX IF NOT EXISTS idx_engagement_posts_status ON engagement_posts(status);
 
 -- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -380,4 +399,180 @@ export async function bulkUpdatePipelineStatus(
     });
 
   if (error) throw error;
+}
+
+// ============ Engagement Posts Functions ============
+
+// Get all engagement posts with prospect data
+export async function getEngagementPosts(status?: 'active' | 'archived') {
+  const client = getSupabaseClient();
+  let query = client
+    .from('engagement_posts')
+    .select(`
+      *,
+      prospects (*)
+    `)
+    .order('posted_at', { ascending: false });
+
+  if (status) {
+    query = query.eq('status', status);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data;
+}
+
+// Save a new engagement post
+export async function saveEngagementPost(post: {
+  prospectId: string;
+  postUrl: string;
+  postContent: string;
+  postedAt: string;
+  authorName: string;
+  authorPhotoUrl?: string;
+  generatedComments?: string[];
+}) {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('engagement_posts')
+    .upsert({
+      prospect_id: post.prospectId,
+      post_url: post.postUrl,
+      post_content: post.postContent,
+      posted_at: post.postedAt,
+      author_name: post.authorName,
+      author_photo_url: post.authorPhotoUrl || null,
+      generated_comments: post.generatedComments || [],
+      status: 'active'
+    }, {
+      onConflict: 'post_url'
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+// Update engagement post comments
+export async function updateEngagementPostComments(
+  postId: string,
+  comments: string[]
+) {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('engagement_posts')
+    .update({
+      generated_comments: comments,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', postId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+// Archive an engagement post
+export async function archiveEngagementPost(
+  postId: string,
+  reason: 'aged' | 'engaged'
+) {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('engagement_posts')
+    .update({
+      status: 'archived',
+      archived_reason: reason,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', postId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+// Restore an archived engagement post
+export async function restoreEngagementPost(postId: string) {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('engagement_posts')
+    .update({
+      status: 'active',
+      archived_reason: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', postId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+// Clear all archived engagement posts
+export async function clearArchivedEngagementPosts() {
+  const client = getSupabaseClient();
+  const { error } = await client
+    .from('engagement_posts')
+    .delete()
+    .eq('status', 'archived');
+
+  if (error) throw error;
+}
+
+// Auto-archive posts older than specified days
+export async function autoArchiveOldPosts(daysOld: number = 2) {
+  const client = getSupabaseClient();
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+
+  const { data, error } = await client
+    .from('engagement_posts')
+    .update({
+      status: 'archived',
+      archived_reason: 'aged',
+      updated_at: new Date().toISOString()
+    })
+    .eq('status', 'active')
+    .lt('posted_at', cutoffDate.toISOString())
+    .select();
+
+  if (error) throw error;
+  return data;
+}
+
+// Transform engagement post from DB to app format
+export function transformEngagementPost(dbPost: Record<string, unknown>): Record<string, unknown> {
+  const prospect = dbPost.prospects as Record<string, unknown> | null;
+  return {
+    id: dbPost.id,
+    prospectId: dbPost.prospect_id,
+    postUrl: dbPost.post_url,
+    postContent: dbPost.post_content,
+    postedAt: dbPost.posted_at,
+    authorName: dbPost.author_name,
+    authorPhotoUrl: dbPost.author_photo_url,
+    status: dbPost.status,
+    archivedReason: dbPost.archived_reason,
+    generatedComments: dbPost.generated_comments || [],
+    createdAt: dbPost.created_at,
+    updatedAt: dbPost.updated_at,
+    prospect: prospect ? {
+      id: prospect.id,
+      firstName: prospect.first_name,
+      lastName: prospect.last_name,
+      fullName: prospect.full_name,
+      linkedinUrl: prospect.linkedin_url,
+      profilePicUrl: prospect.profile_pic_url,
+      headline: prospect.headline,
+      companyName: prospect.company_name,
+      jobTitle: prospect.job_title,
+      icpScore: prospect.icp_score
+    } : undefined
+  };
 }
