@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { saveEngagementPost, autoArchiveOldPosts } from '@/lib/supabase';
+import { saveEngagementPost, autoArchiveOldPosts, getWatchedProfiles } from '@/lib/supabase';
 
 const APIFY_TOKEN = process.env.APIFY_API_TOKEN || '';
 const APIFY_ACTOR = 'harvestapi~linkedin-profile-posts';
@@ -22,11 +22,32 @@ interface ProspectInput {
 
 export async function POST(request: Request) {
   try {
-    const { prospects } = await request.json() as { prospects: ProspectInput[] };
+    const body = await request.json().catch(() => ({}));
+    let { prospects, useWatchedProfiles } = body as { prospects?: ProspectInput[]; useWatchedProfiles?: boolean };
 
-    if (!prospects || !Array.isArray(prospects) || prospects.length === 0) {
+    // If useWatchedProfiles is true or no prospects provided, fetch from watched profiles
+    if (useWatchedProfiles || !prospects || prospects.length === 0) {
+      const watchedProfiles = await getWatchedProfiles();
+      if (!watchedProfiles || watchedProfiles.length === 0) {
+        return NextResponse.json(
+          { error: 'No watched profiles configured. Add profiles to your watch list first.' },
+          { status: 400 }
+        );
+      }
+
+      prospects = watchedProfiles.map((wp: Record<string, unknown>) => {
+        const prospect = wp.prospects as Record<string, unknown>;
+        return {
+          id: prospect.id as string,
+          linkedinUrl: prospect.linkedin_url as string,
+          fullName: prospect.full_name as string
+        };
+      });
+    }
+
+    if (!prospects || prospects.length === 0) {
       return NextResponse.json(
-        { error: 'No prospects provided' },
+        { error: 'No prospects to fetch posts for' },
         { status: 400 }
       );
     }

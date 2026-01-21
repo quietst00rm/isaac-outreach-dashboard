@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import type { ProspectWithPipeline, EngagementPostWithProspect } from '@/types';
+import type { EngagementPostWithProspect, WatchedProfileWithProspect, Prospect } from '@/types';
 
 function getInitials(name: string): string {
   return name
@@ -27,11 +27,10 @@ function formatTimeAgo(dateString: string): string {
 }
 
 export default function EngagementPage() {
-  // Prospects for selection
-  const [prospects, setProspects] = useState<ProspectWithPipeline[]>([]);
-  const [selectedProspectIds, setSelectedProspectIds] = useState<Set<string>>(new Set());
-  const [showProspectSelector, setShowProspectSelector] = useState(false);
-  const [prospectSearch, setProspectSearch] = useState('');
+  // Watched profiles
+  const [watchedProfiles, setWatchedProfiles] = useState<WatchedProfileWithProspect[]>([]);
+  const [newProfileUrl, setNewProfileUrl] = useState('');
+  const [isAddingProfile, setIsAddingProfile] = useState(false);
 
   // Engagement posts
   const [activePosts, setActivePosts] = useState<EngagementPostWithProspect[]>([]);
@@ -39,29 +38,30 @@ export default function EngagementPage() {
   const [showArchived, setShowArchived] = useState(false);
 
   // Loading states
-  const [isLoadingProspects, setIsLoadingProspects] = useState(true);
+  const [isLoadingProfiles, setIsLoadingProfiles] = useState(true);
   const [isLoadingPosts, setIsLoadingPosts] = useState(true);
   const [isFetchingPosts, setIsFetchingPosts] = useState(false);
   const [isGeneratingComments, setIsGeneratingComments] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Fetch prospects
-  useEffect(() => {
-    const fetchProspects = async () => {
-      try {
-        const res = await fetch('/api/prospects');
-        if (res.ok) {
-          const data = await res.json();
-          setProspects(data);
-        }
-      } catch (error) {
-        console.error('Error fetching prospects:', error);
-      } finally {
-        setIsLoadingProspects(false);
+  // Fetch watched profiles
+  const fetchWatchedProfiles = useCallback(async () => {
+    try {
+      const res = await fetch('/api/engagement/watched-profiles');
+      if (res.ok) {
+        const data = await res.json();
+        setWatchedProfiles(data);
       }
-    };
-    fetchProspects();
+    } catch (error) {
+      console.error('Error fetching watched profiles:', error);
+    } finally {
+      setIsLoadingProfiles(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchWatchedProfiles();
+  }, [fetchWatchedProfiles]);
 
   // Fetch engagement posts
   const fetchEngagementPosts = useCallback(async () => {
@@ -72,10 +72,9 @@ export default function EngagementPage() {
         fetch('/api/engagement/posts?status=archived')
       ]);
 
-      if (activeRes.ok) {
-        const activeData = await archivedRes.json();
+      if (activeRes.ok && archivedRes.ok) {
         setActivePosts(await activeRes.json());
-        setArchivedPosts(activeData);
+        setArchivedPosts(await archivedRes.json());
       }
     } catch (error) {
       console.error('Error fetching engagement posts:', error);
@@ -88,37 +87,58 @@ export default function EngagementPage() {
     fetchEngagementPosts();
   }, [fetchEngagementPosts]);
 
-  // Toggle prospect selection
-  const toggleProspectSelection = (id: string) => {
-    setSelectedProspectIds(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
+  // Add a watched profile by URL
+  const handleAddProfile = async () => {
+    if (!newProfileUrl.trim()) return;
+
+    setIsAddingProfile(true);
+    try {
+      const res = await fetch('/api/engagement/watched-profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkedinUrl: newProfileUrl.trim() })
+      });
+
+      if (res.ok) {
+        setNewProfileUrl('');
+        await fetchWatchedProfiles();
       } else {
-        newSet.add(id);
+        const error = await res.json();
+        alert(error.error || 'Failed to add profile');
       }
-      return newSet;
-    });
+    } catch (error) {
+      console.error('Error adding profile:', error);
+      alert('Failed to add profile');
+    } finally {
+      setIsAddingProfile(false);
+    }
   };
 
-  // Fetch posts for selected prospects
+  // Remove a watched profile
+  const handleRemoveProfile = async (prospectId: string) => {
+    try {
+      await fetch(`/api/engagement/watched-profiles/${prospectId}`, {
+        method: 'DELETE'
+      });
+      await fetchWatchedProfiles();
+    } catch (error) {
+      console.error('Error removing profile:', error);
+    }
+  };
+
+  // Fetch posts for all watched profiles
   const handleFetchPosts = async () => {
-    if (selectedProspectIds.size === 0) return;
+    if (watchedProfiles.length === 0) {
+      alert('Add some profiles to your watch list first');
+      return;
+    }
 
     setIsFetchingPosts(true);
     try {
-      const selectedProspects = prospects
-        .filter(p => selectedProspectIds.has(p.id))
-        .map(p => ({
-          id: p.id,
-          linkedinUrl: p.linkedinUrl,
-          fullName: p.fullName
-        }));
-
       const res = await fetch('/api/engagement/fetch-posts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prospects: selectedProspects })
+        body: JSON.stringify({ useWatchedProfiles: true })
       });
 
       if (res.ok) {
@@ -128,11 +148,18 @@ export default function EngagementPage() {
         // Generate comments for new posts
         if (data.posts && data.posts.length > 0) {
           setIsGeneratingComments(true);
-          const postsToGenerate = data.posts.map((post: { id: string; post_content: string; prospect_id: string }) => ({
-            postId: post.id,
-            postContent: post.post_content,
-            prospect: prospects.find(p => p.id === post.prospect_id)
-          }));
+
+          // Get full prospect data for comment generation
+          const postsToGenerate = data.posts.map((post: Record<string, unknown>) => {
+            const watchedProfile = watchedProfiles.find(
+              wp => wp.prospectId === post.prospect_id
+            );
+            return {
+              postId: post.id,
+              postContent: post.post_content,
+              prospect: watchedProfile?.prospect || { fullName: post.author_name }
+            };
+          });
 
           await fetch('/api/engagement/generate-comments', {
             method: 'POST',
@@ -144,11 +171,13 @@ export default function EngagementPage() {
 
         // Refresh posts list
         await fetchEngagementPosts();
-        setShowProspectSelector(false);
-        setSelectedProspectIds(new Set());
+      } else {
+        const error = await res.json();
+        alert(error.error || 'Failed to fetch posts');
       }
     } catch (error) {
       console.error('Error fetching posts:', error);
+      alert('Failed to fetch posts');
     } finally {
       setIsFetchingPosts(false);
       setIsGeneratingComments(false);
@@ -202,12 +231,6 @@ export default function EngagementPage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Filter prospects by search
-  const filteredProspects = prospects.filter(p =>
-    p.fullName.toLowerCase().includes(prospectSearch.toLowerCase()) ||
-    p.companyName?.toLowerCase().includes(prospectSearch.toLowerCase())
-  );
-
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
@@ -223,19 +246,126 @@ export default function EngagementPage() {
               <h1 className="text-2xl font-bold text-gray-900">Engagement Queue</h1>
             </div>
             <button
-              onClick={() => setShowProspectSelector(true)}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              onClick={handleFetchPosts}
+              disabled={isFetchingPosts || watchedProfiles.length === 0}
+              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Fetch New Posts
+              {isFetchingPosts || isGeneratingComments ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  {isGeneratingComments ? 'Generating Comments...' : 'Fetching Posts...'}
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Fetch Posts ({watchedProfiles.length} profiles)
+                </>
+              )}
             </button>
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+        {/* Watched Profiles Section */}
+        <section className="mb-8 bg-white rounded-lg border border-gray-200 p-4">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            Watched Profiles ({watchedProfiles.length})
+          </h2>
+
+          {/* Add Profile Input */}
+          <div className="flex gap-2 mb-4">
+            <input
+              type="text"
+              value={newProfileUrl}
+              onChange={(e) => setNewProfileUrl(e.target.value)}
+              placeholder="Paste LinkedIn profile URL..."
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onKeyDown={(e) => e.key === 'Enter' && handleAddProfile()}
+            />
+            <button
+              onClick={handleAddProfile}
+              disabled={isAddingProfile || !newProfileUrl.trim()}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+            >
+              {isAddingProfile ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Watched Profiles List */}
+          {isLoadingProfiles ? (
+            <div className="flex items-center justify-center py-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            </div>
+          ) : watchedProfiles.length === 0 ? (
+            <p className="text-gray-500 text-sm text-center py-4">
+              No profiles added yet. Paste a LinkedIn URL above to start tracking.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {watchedProfiles.map(wp => (
+                <div
+                  key={wp.id}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-full text-sm"
+                >
+                  {wp.prospect?.profilePicUrl ? (
+                    <Image
+                      src={wp.prospect.profilePicUrl}
+                      alt={wp.prospect.fullName || ''}
+                      width={24}
+                      height={24}
+                      className="w-6 h-6 rounded-full object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-medium">
+                      {getInitials(wp.prospect?.fullName || '?')}
+                    </div>
+                  )}
+                  <span className="font-medium text-gray-700">
+                    {wp.prospect?.fullName || 'Unknown'}
+                  </span>
+                  {wp.prospect?.companyName && (
+                    <span className="text-gray-500">
+                      @ {wp.prospect.companyName}
+                    </span>
+                  )}
+                  <a
+                    href={wp.prospect?.linkedinUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800"
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                    </svg>
+                  </a>
+                  <button
+                    onClick={() => handleRemoveProfile(wp.prospectId)}
+                    className="text-gray-400 hover:text-red-600 transition-colors"
+                    title="Remove from watch list"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
         {/* Active Posts Queue */}
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">
@@ -252,13 +382,11 @@ export default function EngagementPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
               <h3 className="text-lg font-medium text-gray-900 mb-2">No active posts</h3>
-              <p className="text-gray-500 mb-4">Fetch posts from your prospects to start engaging</p>
-              <button
-                onClick={() => setShowProspectSelector(true)}
-                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                Fetch Posts
-              </button>
+              <p className="text-gray-500 mb-4">
+                {watchedProfiles.length === 0
+                  ? 'Add profiles to your watch list, then fetch their posts'
+                  : 'Click "Fetch Posts" to get recent posts from watched profiles'}
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -430,116 +558,6 @@ export default function EngagementPage() {
           )}
         </section>
       </main>
-
-      {/* Prospect Selector Modal */}
-      {showProspectSelector && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
-            <div className="p-4 border-b border-gray-200">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">Select Prospects</h2>
-                <button
-                  onClick={() => {
-                    setShowProspectSelector(false);
-                    setSelectedProspectIds(new Set());
-                  }}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <input
-                type="text"
-                value={prospectSearch}
-                onChange={(e) => setProspectSearch(e.target.value)}
-                placeholder="Search prospects..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4">
-              {isLoadingProspects ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {filteredProspects.map(prospect => (
-                    <label
-                      key={prospect.id}
-                      className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
-                        selectedProspectIds.has(prospect.id)
-                          ? 'bg-blue-50 border border-blue-200'
-                          : 'hover:bg-gray-50 border border-transparent'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedProspectIds.has(prospect.id)}
-                        onChange={() => toggleProspectSelection(prospect.id)}
-                        className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      {prospect.profilePicUrl ? (
-                        <Image
-                          src={prospect.profilePicUrl}
-                          alt={prospect.fullName}
-                          width={40}
-                          height={40}
-                          className="w-10 h-10 rounded-full object-cover"
-                          unoptimized
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm">
-                          {getInitials(prospect.fullName)}
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 truncate">{prospect.fullName}</p>
-                        <p className="text-sm text-gray-500 truncate">
-                          {prospect.jobTitle} at {prospect.companyName}
-                        </p>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="p-4 border-t border-gray-200 flex items-center justify-between">
-              <span className="text-sm text-gray-500">
-                {selectedProspectIds.size} selected
-              </span>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowProspectSelector(false);
-                    setSelectedProspectIds(new Set());
-                  }}
-                  className="px-4 py-2 text-gray-700 hover:text-gray-900"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleFetchPosts}
-                  disabled={selectedProspectIds.size === 0 || isFetchingPosts}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                >
-                  {isFetchingPosts || isGeneratingComments ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      {isGeneratingComments ? 'Generating Comments...' : 'Fetching Posts...'}
-                    </>
-                  ) : (
-                    'Fetch Posts'
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -176,3 +176,14 @@ export interface EngagementPost {
 export interface EngagementPostWithProspect extends EngagementPost {
   prospect?: Prospect;
 }
+
+// Watched profiles for regular engagement
+export interface WatchedProfile {
+  id: string;
+  prospectId: string;
+  addedAt: string;
+}
+
+export interface WatchedProfileWithProspect extends WatchedProfile {
+  prospect?: Prospect;
+}

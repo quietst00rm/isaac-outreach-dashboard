@@ -79,6 +79,14 @@ CREATE TABLE IF NOT EXISTS generated_messages (
   used BOOLEAN DEFAULT FALSE
 );
 
+-- Watched profiles for engagement (profiles to regularly fetch posts from)
+CREATE TABLE IF NOT EXISTS engagement_watched_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  prospect_id UUID REFERENCES prospects(id) ON DELETE CASCADE,
+  added_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(prospect_id)
+);
+
 -- Engagement posts table for comment workflow
 CREATE TABLE IF NOT EXISTS engagement_posts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -103,6 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_pipeline_status_status ON pipeline_status(status)
 CREATE INDEX IF NOT EXISTS idx_generated_messages_prospect_id ON generated_messages(prospect_id);
 CREATE INDEX IF NOT EXISTS idx_engagement_posts_prospect_id ON engagement_posts(prospect_id);
 CREATE INDEX IF NOT EXISTS idx_engagement_posts_status ON engagement_posts(status);
+CREATE INDEX IF NOT EXISTS idx_engagement_watched_profiles_prospect_id ON engagement_watched_profiles(prospect_id);
 
 -- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -562,6 +571,117 @@ export function transformEngagementPost(dbPost: Record<string, unknown>): Record
     generatedComments: dbPost.generated_comments || [],
     createdAt: dbPost.created_at,
     updatedAt: dbPost.updated_at,
+    prospect: prospect ? {
+      id: prospect.id,
+      firstName: prospect.first_name,
+      lastName: prospect.last_name,
+      fullName: prospect.full_name,
+      linkedinUrl: prospect.linkedin_url,
+      profilePicUrl: prospect.profile_pic_url,
+      headline: prospect.headline,
+      companyName: prospect.company_name,
+      jobTitle: prospect.job_title,
+      icpScore: prospect.icp_score
+    } : undefined
+  };
+}
+
+// ============ Watched Profiles Functions ============
+
+// Get all watched profiles with prospect data
+export async function getWatchedProfiles() {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('engagement_watched_profiles')
+    .select(`
+      *,
+      prospects (*)
+    `)
+    .order('added_at', { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+
+// Add a profile to watch list by prospect ID
+export async function addWatchedProfile(prospectId: string) {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from('engagement_watched_profiles')
+    .upsert({
+      prospect_id: prospectId
+    }, {
+      onConflict: 'prospect_id'
+    })
+    .select(`
+      *,
+      prospects (*)
+    `)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+// Add a profile by LinkedIn URL (creates prospect if needed)
+export async function addWatchedProfileByUrl(linkedinUrl: string) {
+  const client = getSupabaseClient();
+
+  // Normalize URL
+  const normalizedUrl = linkedinUrl.replace(/\/$/, '').toLowerCase();
+
+  // First check if prospect exists
+  const { data: existingProspect } = await client
+    .from('prospects')
+    .select('id')
+    .ilike('linkedin_url', `%${normalizedUrl.split('/in/')[1]?.split('/')[0] || normalizedUrl}%`)
+    .single();
+
+  if (existingProspect) {
+    // Add to watched profiles
+    return addWatchedProfile(existingProspect.id);
+  }
+
+  // Create a basic prospect record
+  const urlParts = normalizedUrl.split('/');
+  const username = urlParts[urlParts.length - 1] || urlParts[urlParts.length - 2] || 'unknown';
+
+  const { data: newProspect, error: prospectError } = await client
+    .from('prospects')
+    .insert({
+      first_name: username,
+      last_name: '',
+      full_name: username,
+      linkedin_url: linkedinUrl,
+      icp_score: 0
+    })
+    .select()
+    .single();
+
+  if (prospectError) throw prospectError;
+
+  // Add to watched profiles
+  return addWatchedProfile(newProspect.id);
+}
+
+// Remove a profile from watch list
+export async function removeWatchedProfile(prospectId: string) {
+  const client = getSupabaseClient();
+  const { error } = await client
+    .from('engagement_watched_profiles')
+    .delete()
+    .eq('prospect_id', prospectId);
+
+  if (error) throw error;
+}
+
+// Transform watched profile from DB to app format
+export function transformWatchedProfile(dbRecord: Record<string, unknown>): Record<string, unknown> {
+  const prospect = dbRecord.prospects as Record<string, unknown> | null;
+  return {
+    id: dbRecord.id,
+    prospectId: dbRecord.prospect_id,
+    addedAt: dbRecord.added_at,
     prospect: prospect ? {
       id: prospect.id,
       firstName: prospect.first_name,
