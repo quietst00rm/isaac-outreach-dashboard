@@ -678,6 +678,41 @@ export async function removeWatchedProfile(prospectId: string) {
   if (error) throw error;
 }
 
+// Bulk remove watched profiles by prospect names
+export async function bulkRemoveWatchedProfilesByNames(names: string[]) {
+  const client = getSupabaseClient();
+
+  // First, find prospect IDs by matching names
+  const { data: prospects, error: findError } = await client
+    .from('prospects')
+    .select('id, full_name')
+    .in('full_name', names);
+
+  if (findError) throw findError;
+
+  if (!prospects || prospects.length === 0) {
+    return { removed: 0, notFound: names };
+  }
+
+  const foundNames = prospects.map(p => p.full_name);
+  const notFoundNames = names.filter(n => !foundNames.includes(n));
+  const prospectIds = prospects.map(p => p.id);
+
+  // Delete from watched profiles
+  const { error: deleteError } = await client
+    .from('engagement_watched_profiles')
+    .delete()
+    .in('prospect_id', prospectIds);
+
+  if (deleteError) throw deleteError;
+
+  return {
+    removed: prospectIds.length,
+    removedNames: foundNames,
+    notFound: notFoundNames
+  };
+}
+
 // Transform watched profile from DB to app format
 export function transformWatchedProfile(dbRecord: Record<string, unknown>): Record<string, unknown> {
   const prospect = dbRecord.prospects as Record<string, unknown> | null;
