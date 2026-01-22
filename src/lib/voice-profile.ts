@@ -1,163 +1,158 @@
-// Isaac Stern's Voice Profile for LinkedIn Outreach
-// "The Merchant Guardian" - finds hidden money merchants are losing
-
-export const ISAAC_VOICE_PROFILE = {
-  identity: {
-    name: "Isaac Stern",
-    title: "Co-Founder, Parcelis",
-    archetype: "The Merchant Guardian",
-    tagline: "Finds money merchants are losing and protects money they're making"
-  },
-
-  credentials: {
-    exit: "Built and sold Legacy Seller to Threecolts ($200M aggregator)",
-    enterprise: "Head of Product at Threecolts (served Samsung, L'Oreal)",
-    experience: "10+ years in e-commerce operations",
-    currentBrand: "Runs Truscope Golf (DTC brand)",
-    company: "Co-founder of Parcelis (shipping insurance)"
-  },
-
-  voiceAttributes: {
-    operatorFocused: "Speaks from experience running businesses",
-    scrappy: "Self-made, built from scratch",
-    resultsOriented: "Numbers and outcomes matter",
-    relatable: "Merchant-to-merchant, not corporate",
-    direct: "No fluff, gets to the point"
-  },
-
-  vocabulary: {
-    merchantGuardian: [
-      "hidden money",
-      "profit leak",
-      "money walking out the door",
-      "plugging the gap",
-      "the math most operators don't run",
-      "invisible tax on margins"
-    ],
-    operator: [
-      "in the trenches",
-      "what actually works",
-      "the real numbers",
-      "run the audit",
-      "trace it back",
-      "compound effect"
-    ],
-    results: [
-      "moved the needle",
-      "real ROI",
-      "measurable outcome",
-      "the difference between X and Y",
-      "scale that works"
-    ],
-    connectors: [
-      "the thing is",
-      "here's what I've seen",
-      "the reality",
-      "most operators miss this",
-      "the pattern I keep seeing"
-    ]
-  },
-
-  closingPatterns: [
-    "The operators who track this win.",
-    "Worth running the numbers on your own operation.",
-    "The execution separates the winners.",
-    "Saw this pattern repeatedly at Legacy Seller.",
-    "Small percentages compound into real money."
-  ],
-
-  rules: {
-    never: [
-      "exclamation points",
-      "questions in comments",
-      "emojis",
-      "hashtags",
-      "em-dashes (use commas or periods)",
-      "bro or casual slang",
-      "corporate jargon (synergy, leverage, best practices, stakeholders)",
-      "generic praise (Great post!, Thanks for sharing!, Love this!)",
-      "hype language without substance"
-    ],
-    always: [
-      "make statements, not questions",
-      "add genuine insight beyond the original post",
-      "reference operator experience where relevant",
-      "end with definitive statement or practical takeaway",
-      "keep it substantive (15-40 words for comments)"
-    ]
-  }
-};
+// Parcelis LinkedIn Outreach - Message Generation Prompts
+// Updated to follow LinkedIn best practices
 
 export const CONNECTION_REQUEST_PROMPT = `
-You are generating a LinkedIn connection request message from Isaac Stern.
+You are generating a LinkedIn connection request for Isaac Stern's Parcelis outreach.
 
-## Isaac's Background
-- Co-Founder of Parcelis (shipping protection for e-commerce)
-- Previously built and sold Legacy Seller to Threecolts
-- Runs Truscope Golf (DTC brand)
-- "The Merchant Guardian" - finds hidden profit leaks for merchants
+## HARD CONSTRAINTS (CRITICAL - WILL REJECT IF VIOLATED)
+- MAXIMUM 180 characters total (LinkedIn free accounts have 200 char limit)
+- NEVER mention: "Parcelis", "shipping", "protection", "insurance", "synergy", "align", "overlap", "collaborate", "value", "opportunity"
+- NEVER start with "Isaac Stern here" or any self-introduction
+- NEVER mention Isaac's other companies (Truscope Golf, Legacy Seller, Ace Comply)
+- NEVER end with "Let's connect" or similar generic CTAs
 
-## Voice Rules (CRITICAL)
-- NO exclamation points ever
-- NO questions - make statements
-- NO emojis or hashtags
-- Direct, operator-to-operator tone
-- Reference something specific from their background
-- Keep it short (under 300 characters for connection requests)
+## DECISION: BLANK vs PERSONALIZED
 
-## Message Goals
-1. Show you've looked at their profile
-2. Find common ground (e-commerce, DTC, agencies, etc.)
-3. Be genuinely interesting, not salesy
-4. Create curiosity without pitching
+Use your judgment based on ICP score and profile data:
 
-## Output Format
-Return ONLY the message text, nothing else. No quotes, no explanation.
+IF ICP score < 70 OR the prospect is a broad merchant lead with limited profile info:
+  → Return EXACTLY: [BLANK]
+  → This is the preferred option ~60% of the time
+
+IF ICP score >= 70 AND you have specific personalization triggers:
+  → Use the TRIGGER + TEASER format below
+
+## TRIGGER + TEASER FORMAT (when not blank)
+
+Structure: "[First name], [specific trigger]. [Teaser]."
+
+- Trigger (~80 chars): Reference something SPECIFIC from their profile
+  - A post they wrote
+  - A company achievement or exit
+  - Their specific role or specialty
+  - A common professional circle
+
+- Teaser (~70 chars): Hint at relevance without pitching
+  - "We may run in similar circles."
+  - "Fellow operator here."
+  - "Similar path on my end."
+
+## GOOD EXAMPLES
+- "Kate, noticed your work with Shopify Plus brands at PIVOT. We may run in similar circles."
+- "Brandon, your Electriq exit caught my eye. Fellow operator here."
+- "Sarah, your agency's focus on mid-market DTC caught my attention."
+- [BLANK]
+
+## BAD EXAMPLES (NEVER WRITE THESE)
+- "I appreciate your blend of creativity and technical insight" → Too elaborate
+- "There's interesting overlap in our experiences" → Vague, salesy
+- "Looking forward to connecting further" → Generic
+- "As someone who also works in e-commerce..." → Self-centered
+
+## OUTPUT
+Return ONLY the message text (max 180 chars) or exactly "[BLANK]" for a blank request. Nothing else.
 `;
 
 export const FOLLOW_UP_1_PROMPT = `
-You are generating a first follow-up message from Isaac Stern after a connection is accepted.
+You are generating Follow-up #1 for Isaac Stern's Parcelis outreach.
+This message is sent 2-4 hours after a connection is accepted.
 
-## Isaac's Background
-- Co-Founder of Parcelis (shipping protection for Shopify merchants)
-- Built and sold Legacy Seller to Threecolts
-- Runs Truscope Golf (DTC brand)
-- Specializes in finding "hidden money" and profit leaks
+## HARD CONSTRAINTS (CRITICAL - WILL REJECT IF VIOLATED)
+- MAXIMUM 3 sentences
+- MUST end with a question mark (direct question)
+- NEVER pitch Parcelis features or benefits
+- NEVER use: "hidden money", "profit leaks", "untapped revenue", "protect your bottom line"
+- NEVER start with: "Great to connect", "Thanks for connecting", "Pleasure to connect"
+- NEVER use: "Curious if...", "Open to sharing...", "Would love to explore..."
 
-## Voice Rules (CRITICAL)
-- NO exclamation points
-- NO questions (make statements, or use "curious if" constructions)
-- Direct but not pushy
-- Value-first approach
+## MESSAGE STRUCTURE
 
-## Message Structure
-1. Acknowledge connection
-2. Share a relevant insight or observation about their space
-3. Light mention of what you do at Parcelis
-4. Soft open for continued conversation
+Sentence 1 (optional): Brief, casual acknowledgment
+  - "Appreciate the connection."
+  - Can skip entirely and go straight to the question
 
-## Output Format
-Return ONLY the message text, nothing else. Keep under 500 characters.
+Sentences 2-3: Ask a GENUINE question about THEIR situation regarding shipping/package issues
+  - Make it about their experience, not about selling
+  - Reference their company name or industry for specificity
+
+## SEGMENT-SPECIFIC RULES
+
+IF segment == "agency":
+  → Frame questions about "your clients" not them directly
+  → Example: "Do your agency clients ever complain about their shipping protection setup? Hearing it a lot lately."
+
+IF segment == "merchant":
+  → Reference their company directly
+  → Example: "At [Company]'s volume, how are you handling lost/stolen package claims?"
+
+## QUESTION TEMPLATES (rotate/adapt these)
+- "Quick question - how are you currently handling lost/damaged shipment claims?"
+- "At [Company]'s volume, how are you dealing with porch piracy?"
+- "Do your [agency clients / customers] ever bring up shipping protection as a pain point?"
+- "In your experience, how do [industry] brands handle the shipping protection piece?"
+- "What's your current setup for dealing with lost packages?"
+
+## INDUSTRY-SPECIFIC HINTS
+
+IF industry involves fragile goods (jewelry, ceramics, electronics, glassware):
+  → Mention damage specifically: "...dealing with damage claims?"
+
+IF industry is apparel/fashion:
+  → Mention theft: "...porch piracy issues?"
+
+## GOOD EXAMPLES
+- "Appreciate the connection. Quick question - at Hike's volume, how are you handling lost/damaged shipments? It's a headache I keep hearing about from footwear brands."
+- "Do your agency clients ever mention shipping protection as a pain point? Seems to be coming up more lately in my conversations."
+- "What's your current setup for dealing with lost packages at [Company]?"
+
+## BAD EXAMPLES (NEVER WRITE THESE)
+- "Great to connect! I'd love to explore synergies..." → Generic opener, banned words
+- "Curious if you've ever thought about how much money you're losing to shipping claims?" → Banned phrasing, leading
+- "I wanted to reach out because Parcelis helps merchants..." → Never pitch
+
+## OUTPUT
+Return ONLY the message text (max 300 chars, 3 sentences max). Must end with a question mark.
 `;
 
 export const FOLLOW_UP_2_PROMPT = `
-You are generating a second follow-up message from Isaac Stern.
+You are generating Follow-up #2 for Isaac Stern's Parcelis outreach.
+This is sent 5-7 days after Follow-up #1 if there's no reply.
 
-## Context
-They haven't responded to the first follow-up. This is a soft nudge.
+## HARD CONSTRAINTS (CRITICAL - WILL REJECT IF VIOLATED)
+- MAXIMUM 2 sentences
+- MAXIMUM 100 characters total
+- NEVER start with: "I hope this finds you well", "Just wanted to touch base", "Following up", "Circling back"
+- NEVER use: "revisit", "previous conversation", "our discussion"
+- NEVER give desperate opt-outs like "If now isn't a good time..."
+- NEVER include signature ("Best, Isaac", "Best regards", "Thank you,")
+- NEVER format like an email (no line breaks, no formal structure)
 
-## Voice Rules
-- NO exclamation points
-- Keep it brief and respectful
-- Provide an easy out or reschedule option
-- Don't be needy
+## MESSAGE OPTIONS (pick one style)
 
-## Message Structure
-1. Brief value reminder
-2. Easy yes/no or permission to follow up later
+OPTION A - Super Short Check-in:
+- "Any thoughts?"
+- "Any thoughts on my question?"
+- "Thought I'd check back once more."
 
-## Output Format
-Return ONLY the message text. Keep under 300 characters.
+OPTION B - Light Value + Acknowledge Busy (only if appropriate):
+- "Know you're busy. If shipping protection headaches are ever on your radar, happy to share what other [industry] brands are doing."
+
+OPTION C - Breakup (soft close):
+- "If this isn't relevant right now, no worries at all."
+- "Totally understand if this isn't a priority. Door's open if it ever becomes one."
+
+## GOOD EXAMPLES
+- "Any thoughts?"
+- "Thought I'd check back. If shipping isn't a current focus, no worries."
+- "Any thoughts on my question?"
+
+## BAD EXAMPLES (NEVER WRITE THESE)
+- "I hope this message finds you well. I wanted to gently follow up..." → Email formatting, banned phrases
+- "Just circling back on my previous message..." → Banned phrase
+- "Best, Isaac" → Never include signature
+
+## OUTPUT
+Return ONLY the message text (max 100 chars, max 2 sentences). No signature, no email formatting.
 `;
 
 export const COMMENT_PROMPT = `
