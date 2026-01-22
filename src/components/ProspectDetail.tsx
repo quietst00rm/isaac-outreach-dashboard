@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import type { ProspectWithPipeline, PipelineStatus, GeneratedMessage } from '@/types';
+import ResponseGenerator from './ResponseGenerator';
 
 interface ProspectDetailProps {
   prospect: ProspectWithPipeline;
@@ -49,6 +50,7 @@ export function ProspectDetail({
 }: ProspectDetailProps) {
   const [copiedMessage, setCopiedMessage] = useState<string | null>(null);
   const [showICPBreakdown, setShowICPBreakdown] = useState(false);
+  const [showResponseGenerator, setShowResponseGenerator] = useState(false);
   const status = prospect.pipeline?.status || 'not_contacted';
 
   const copyToClipboard = async (text: string, messageId: string) => {
@@ -157,6 +159,19 @@ export function ProspectDetail({
                     View Profile
                   </a>
                 </div>
+
+                {/* Response Generator Button - Shows when prospect has responded */}
+                {(status === 'responded' || status === 'message_sent' || status === 'connected') && (
+                  <button
+                    onClick={() => setShowResponseGenerator(true)}
+                    className="mt-3 w-full inline-flex items-center justify-center px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                    </svg>
+                    Handle Response
+                  </button>
+                )}
               </div>
 
               {/* ICP Score with Breakdown */}
@@ -361,6 +376,14 @@ export function ProspectDetail({
           </button>
         </div>
       </div>
+
+      {/* Response Generator Modal */}
+      {showResponseGenerator && (
+        <ResponseGenerator
+          prospect={prospect}
+          onClose={() => setShowResponseGenerator(false)}
+        />
+      )}
     </div>
   );
 }

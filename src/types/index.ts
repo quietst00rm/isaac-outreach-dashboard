@@ -187,3 +187,48 @@ export interface WatchedProfile {
 export interface WatchedProfileWithProspect extends WatchedProfile {
   prospect?: Prospect;
 }
+
+// Response Generator Types
+export type ResponseClassification =
+  // Positive
+  | 'problem_aware'
+  | 'curious'
+  | 'hot_lead'
+  // Neutral
+  | 'non_committal'
+  | 'deflecting'
+  | 'asking_who_you_are'
+  // Negative
+  | 'not_interested'
+  | 'has_competitor'
+  | 'wrong_target'
+  | 'hard_no';
+
+export interface ResponseOption {
+  style: 'direct' | 'soft' | 'question_first';
+  content: string;
+}
+
+export interface GeneratedResponse {
+  classification: ResponseClassification;
+  classificationConfidence: number; // 0-100
+  recommendedAction: string;
+  responses: ResponseOption[];
+  shouldEscalate: boolean;
+  escalationReason?: string;
+}
+
+export interface ResponseInteraction {
+  id: string;
+  prospectId: string;
+  prospectResponse: string;
+  classification: ResponseClassification;
+  classificationOverridden: boolean;
+  originalClassification?: ResponseClassification;
+  generatedResponses: ResponseOption[];
+  selectedResponse?: string;
+  selectedStyle?: 'direct' | 'soft' | 'question_first';
+  outcome?: 'positive' | 'neutral' | 'negative' | 'no_reply';
+  createdAt: string;
+  updatedAt: string;
+}
