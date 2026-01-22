@@ -190,15 +190,18 @@ export async function POST(request: Request) {
       if (p.fullName) return p.fullName;
       return '';
     };
-    // Extract author URL from author object or direct fields
+    // Get the query URL (the profile we requested posts from) - this is the most reliable for matching
+    const getQueryUrl = (p: ApifyPost): string => {
+      if (p.query && typeof p.query === 'string') return p.query;
+      return '';
+    };
+    // Extract author URL from author object or direct fields (for display purposes)
     const getAuthorUrl = (p: ApifyPost): string => {
       if (typeof p.author === 'object' && p.author) {
         // Ensure we return strings
         if (p.author.profileUrl && typeof p.author.profileUrl === 'string') return p.author.profileUrl;
         if (p.author.url && typeof p.author.url === 'string') return p.author.url;
       }
-      // Also check the query field - it contains the original profile URL we requested
-      if (p.query && typeof p.query === 'string') return p.query;
       // Fallback to other fields, ensure string
       const fallback = p.authorProfileUrl || p.profileUrl || p.authorUrl || '';
       return typeof fallback === 'string' ? fallback : '';
@@ -211,18 +214,38 @@ export async function POST(request: Request) {
       return p.authorProfilePicture;
     };
 
+    // Helper to normalize LinkedIn URLs for consistent matching
+    const normalizeLinkedInUrl = (url: string): string => {
+      return url
+        .toLowerCase()
+        .replace(/^https?:\/\//, '')  // Remove protocol
+        .replace(/^www\./, '')         // Remove www
+        .replace(/\/$/, '');           // Remove trailing slash
+    };
+
+    // Extract just the username from a LinkedIn URL
+    const extractUsername = (url: string): string | null => {
+      const match = url.match(/linkedin\.com\/in\/([^\/\?]+)/i);
+      return match ? match[1].toLowerCase() : null;
+    };
+
     // Create a map of LinkedIn URL to prospect for quick lookup
     // Use multiple formats for better matching
     const prospectMap = new Map<string, ProspectInput>();
     prospects.forEach(p => {
       // Store with various normalizations
-      const url = p.linkedinUrl.toLowerCase();
-      prospectMap.set(url, p);
-      prospectMap.set(url.replace(/\/$/, ''), p);
-      // Extract username and store
-      const match = url.match(/linkedin\.com\/in\/([^\/\?]+)/);
-      if (match) {
-        prospectMap.set(match[1].toLowerCase(), p);
+      const url = p.linkedinUrl;
+      const normalizedUrl = normalizeLinkedInUrl(url);
+      const username = extractUsername(url);
+
+      // Store by normalized URL
+      prospectMap.set(normalizedUrl, p);
+      // Store by original lowercase
+      prospectMap.set(url.toLowerCase(), p);
+      prospectMap.set(url.toLowerCase().replace(/\/$/, ''), p);
+      // Store by username only
+      if (username) {
+        prospectMap.set(username, p);
       }
     });
 
@@ -242,6 +265,7 @@ export async function POST(request: Request) {
 
       // Debug: log what we're extracting
       console.log('Processing post:', {
+        query: post.query,
         linkedinUrl: post.linkedinUrl,
         postUrl: post.postUrl,
         url: post.url,
@@ -266,22 +290,39 @@ export async function POST(request: Request) {
       }
 
       // Find the prospect this post belongs to
-      const authorUrl = getAuthorUrl(post).toLowerCase();
+      // Priority 1: Use query URL (the profile we requested posts from)
+      // Priority 2: Use author URL (for original posts)
+      // Priority 3: Match by name
+      const queryUrl = getQueryUrl(post);
+      const authorUrl = getAuthorUrl(post);
       const authorName = getAuthorName(post);
       let prospect: ProspectInput | undefined;
 
-      // Try to match by author profile URL
-      if (authorUrl) {
-        // Try direct match
-        prospect = prospectMap.get(authorUrl) || prospectMap.get(authorUrl.replace(/\/$/, ''));
+      // Helper to try matching a URL against our prospect map
+      const tryMatchUrl = (url: string): ProspectInput | undefined => {
+        if (!url) return undefined;
+        // Try normalized URL
+        const normalized = normalizeLinkedInUrl(url);
+        if (prospectMap.has(normalized)) return prospectMap.get(normalized);
+        // Try lowercase original
+        const lowercase = url.toLowerCase();
+        if (prospectMap.has(lowercase)) return prospectMap.get(lowercase);
+        if (prospectMap.has(lowercase.replace(/\/$/, ''))) return prospectMap.get(lowercase.replace(/\/$/, ''));
+        // Try just username
+        const username = extractUsername(url);
+        if (username && prospectMap.has(username)) return prospectMap.get(username);
+        return undefined;
+      };
 
-        // Try extracting username
-        if (!prospect) {
-          const match = authorUrl.match(/linkedin\.com\/in\/([^\/\?]+)/);
-          if (match) {
-            prospect = prospectMap.get(match[1].toLowerCase());
-          }
-        }
+      // First, try to match by query URL (the profile we requested)
+      // This is most reliable because reposts still have the requested profile's URL in query
+      if (queryUrl) {
+        prospect = tryMatchUrl(queryUrl);
+      }
+
+      // If no match from query, try author profile URL
+      if (!prospect && authorUrl) {
+        prospect = tryMatchUrl(authorUrl);
       }
 
       // If still no match, try by name
@@ -305,6 +346,7 @@ export async function POST(request: Request) {
         skippedPosts.push({
           url: postUrl,
           reason: 'Could not match to prospect',
+          queryUrl,
           authorUrl,
           authorName
         });
