@@ -654,7 +654,7 @@ function DashboardContent() {
           if (p.id === selectedProspect.id) {
             return {
               ...p,
-              messages: [...(p.messages || []), ...newMessages],
+              messages: newMessages, // Replace, don't append
             };
           }
           return p;
@@ -666,7 +666,7 @@ function DashboardContent() {
         prev
           ? {
               ...prev,
-              messages: [...(prev.messages || []), ...newMessages],
+              messages: newMessages, // Replace, don't append
             }
           : null
       );
