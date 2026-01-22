@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ProspectCard, ProspectDetail, ImportModal, PipelineBoard, AddProspectModal, BulkUrlImportModal } from '@/components';
-import type { ProspectWithPipeline, PipelineStatus, Prospect, PipelineRecord, FilterOptions, SegmentFilter } from '@/types';
+import type { ProspectWithPipeline, PipelineStatus, Prospect, PipelineRecord, FilterOptions, SegmentFilter, MessageTrack } from '@/types';
 import {
   getProspects,
   bulkImportProspects,
@@ -56,6 +56,10 @@ function DashboardContent() {
   const [showBulkUrlModal, setShowBulkUrlModal] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationMetadata, setGenerationMetadata] = useState<{
+    track: MessageTrack;
+    personalization_hook: string;
+  } | null>(null);
   const [isRecalculatingICP, setIsRecalculatingICP] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -596,6 +600,7 @@ function DashboardContent() {
     if (!selectedProspect) return;
 
     setIsGenerating(true);
+    setGenerationMetadata(null);
 
     try {
       const response = await fetch('/api/messages/generate', {
@@ -608,14 +613,26 @@ function DashboardContent() {
         throw new Error('Failed to generate messages');
       }
 
-      const { messages } = await response.json();
+      const result = await response.json();
+
+      // Check if prospect was skipped
+      if (result.skipped) {
+        alert(`Prospect skipped: ${result.skip_reason}`);
+        setIsGenerating(false);
+        return;
+      }
+
+      const { track, personalization_hook, messages } = result;
+
+      // Store the generation metadata for display
+      setGenerationMetadata({ track, personalization_hook });
 
       // Save to Supabase if configured
       if (useSupabase) {
         try {
-          await saveGeneratedMessage(selectedProspect.id, 'connection_request', messages.connectionRequest);
-          await saveGeneratedMessage(selectedProspect.id, 'follow_up_1', messages.followUp1);
-          await saveGeneratedMessage(selectedProspect.id, 'follow_up_2', messages.followUp2);
+          await saveGeneratedMessage(selectedProspect.id, 'connection_request', messages.connection_request);
+          await saveGeneratedMessage(selectedProspect.id, 'opening_dm', messages.opening_dm);
+          await saveGeneratedMessage(selectedProspect.id, 'follow_up', messages.follow_up);
         } catch (error) {
           console.error('Failed to save messages to Supabase:', error);
         }
@@ -627,23 +644,23 @@ function DashboardContent() {
           id: `msg-${Date.now()}-1`,
           prospectId: selectedProspect.id,
           messageType: 'connection_request' as const,
-          content: messages.connectionRequest,
+          content: messages.connection_request,
           generatedAt: new Date().toISOString(),
           used: false,
         },
         {
           id: `msg-${Date.now()}-2`,
           prospectId: selectedProspect.id,
-          messageType: 'follow_up_1' as const,
-          content: messages.followUp1,
+          messageType: 'opening_dm' as const,
+          content: messages.opening_dm,
           generatedAt: new Date().toISOString(),
           used: false,
         },
         {
           id: `msg-${Date.now()}-3`,
           prospectId: selectedProspect.id,
-          messageType: 'follow_up_2' as const,
-          content: messages.followUp2,
+          messageType: 'follow_up' as const,
+          content: messages.follow_up,
           generatedAt: new Date().toISOString(),
           used: false,
         },
@@ -1301,10 +1318,14 @@ function DashboardContent() {
       {selectedProspect && (
         <ProspectDetail
           prospect={selectedProspect}
-          onClose={() => setSelectedProspect(null)}
+          onClose={() => {
+            setSelectedProspect(null);
+            setGenerationMetadata(null);
+          }}
           onStatusChange={(status) => handleStatusChange(selectedProspect.id, status)}
           onGenerateMessages={handleGenerateMessages}
           isGenerating={isGenerating}
+          generationMetadata={generationMetadata}
         />
       )}
     </div>

@@ -13,7 +13,19 @@ export type MessageType =
   | 'connection_request'
   | 'follow_up_1'
   | 'follow_up_2'
+  | 'opening_dm'
+  | 'follow_up'
   | 'comment';
+
+// Track types for message classification (based on skill file)
+export type MessageTrack =
+  | 'OPERATOR_EXIT'
+  | 'OPERATOR_SCALE'
+  | 'OPERATOR_DTC'
+  | 'AGENCY_PARTNER'
+  | 'GENERIC_MERCHANT'
+  | 'INFLUENCER_OUTREACH'
+  | 'CONSULTANT_OUTREACH';
 
 export interface Experience {
   companyName: string;

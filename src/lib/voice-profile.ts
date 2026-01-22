@@ -1,3 +1,17 @@
+/**
+ * @deprecated This file is deprecated. Message generation now uses the skill file at
+ * src/prompts/isaac-linkedin-outreach.md as the system prompt.
+ *
+ * This file is kept only for backwards compatibility with the comment generation feature.
+ * For new message generation, use generateMessagesWithSkill() from lib/claude.ts instead.
+ *
+ * The skill file approach provides:
+ * - Prospect track classification (OPERATOR_EXIT, OPERATOR_SCALE, OPERATOR_DTC, AGENCY_PARTNER, etc.)
+ * - Personalization hook extraction
+ * - Better validation (ICP score >= 50 for merchants/agencies, influencer/consultant signals for freelancers)
+ * - Consistent message templates by track
+ */
+
 // Parcelis LinkedIn Outreach - Message Generation Prompts
 // Updated to follow LinkedIn best practices
 
