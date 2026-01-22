@@ -282,10 +282,48 @@ export async function generateAllMessages(
   };
 }
 
-export async function generateComment(
+// Banned phrases for comment validation
+const COMMENT_BANNED_PHRASES = [
+  'truscope golf', 'legacy seller', 'parcelis',
+  'track it or lose it', 'game changer', 'get there or get left behind',
+  'keeps it moving', 'track what\'s real',
+  'this resonates deeply', 'evolving landscape',
+  'efficiency', 'alignment', 'precision', 'protocols', 'friction',
+  'optimization', 'strategic', 'leverage', 'synergy', 'scalable', 'robust'
+];
+
+function validateComment(comment: string, postContent: string): boolean {
+  const lowerComment = comment.toLowerCase();
+  const lowerPost = postContent.toLowerCase();
+
+  // Check for banned phrases (allow company names only if post is about that topic)
+  const postAboutGolf = lowerPost.includes('golf') || lowerPost.includes('pga');
+  const postAboutAmazon = lowerPost.includes('amazon') || lowerPost.includes('reimbursement');
+  const postAboutShipping = lowerPost.includes('shipping') || lowerPost.includes('protection');
+
+  for (const banned of COMMENT_BANNED_PHRASES) {
+    if (lowerComment.includes(banned)) {
+      // Allow company names only if post is relevant
+      if (banned === 'truscope golf' && postAboutGolf) continue;
+      if (banned === 'legacy seller' && postAboutAmazon) continue;
+      if (banned === 'parcelis' && postAboutShipping) continue;
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export interface CommentOptions {
+  conversational: string;  // Option 1 - with question
+  perspective: string;     // Option 2 - no company names
+  brief: string;           // Option 3 - brief and genuine
+}
+
+export async function generateComments(
   prospect: Partial<Prospect>,
   postContent: string
-): Promise<string> {
+): Promise<CommentOptions> {
   const prospectContext = buildProspectContext(prospect);
 
   // Truncate post content to avoid overly long prompts
@@ -298,16 +336,22 @@ export async function generateComment(
 ## Post to Comment On
 ${truncatedPost}
 
-Write a SHORT (15-25 words max) comment now:`;
+Generate 3 comment options now (separated by ---):`;
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
-    max_tokens: 100,
-    temperature: 0.9,
+    max_tokens: 500,
+    temperature: 0.8,
     messages: [
       {
         role: 'system',
-        content: 'You are a comment generator. Write short, human-sounding comments. No buzzwords, no AI speak. Return ONLY the comment text.'
+        content: `You generate LinkedIn comments that sound human. Follow these rules EXACTLY:
+1. NO company name-dropping (Truscope Golf, Legacy Seller, Parcelis) unless the post is directly about that topic
+2. NO fragment phrases like "Track it or lose it" - write natural sentences
+3. Actually engage with the specific topic of the post
+4. Option 1 MUST include a question
+5. Keep each comment to 1-3 sentences max
+Return 3 comments separated by ---`
       },
       {
         role: 'user',
@@ -317,17 +361,49 @@ Write a SHORT (15-25 words max) comment now:`;
   });
 
   const content = response.choices[0]?.message?.content;
-  if (content) {
-    let cleaned = content.trim();
+  if (!content) {
+    throw new Error('No response from OpenAI');
+  }
+
+  // Parse the 3 options
+  const parts = content.split('---').map(p => {
+    let cleaned = p.trim();
     // Remove leading/trailing quotes
     if ((cleaned.startsWith('"') && cleaned.endsWith('"')) ||
         (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
       cleaned = cleaned.slice(1, -1);
     }
-    return cleaned.trim();
+    // Remove option labels if present
+    cleaned = cleaned.replace(/^(Option \d[:\s-]*|Conversational[:\s-]*|Perspective[:\s-]*|Brief[:\s-]*)/i, '').trim();
+    return cleaned;
+  }).filter(p => p.length > 0);
+
+  // Ensure we have 3 options
+  while (parts.length < 3) {
+    parts.push(parts[0] || 'Great post.');
   }
 
-  throw new Error('Unexpected response format from OpenAI');
+  // Validate and log warnings
+  for (let i = 0; i < parts.length; i++) {
+    if (!validateComment(parts[i], postContent)) {
+      console.warn(`Comment option ${i + 1} contains banned content, may need review`);
+    }
+  }
+
+  return {
+    conversational: parts[0],
+    perspective: parts[1],
+    brief: parts[2]
+  };
+}
+
+// Legacy single comment function (returns first option for backwards compatibility)
+export async function generateComment(
+  prospect: Partial<Prospect>,
+  postContent: string
+): Promise<string> {
+  const options = await generateComments(prospect, postContent);
+  return options.conversational;
 }
 
 // Batch generate messages for multiple prospects

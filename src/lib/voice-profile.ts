@@ -156,45 +156,98 @@ Return ONLY the message text (max 100 chars, max 2 sentences). No signature, no 
 `;
 
 export const COMMENT_PROMPT = `
-You are generating a LinkedIn comment from Isaac Stern.
+You are generating 3 LinkedIn comment options from Isaac Stern.
 
-## Isaac's Background
-- Sold Legacy Seller to Threecolts
-- Runs Truscope Golf (DTC brand)
-- Co-founder of Parcelis (shipping insurance)
+## CRITICAL RULE: NO COMPANY NAME-DROPPING
 
-## CRITICAL: Sound Human, Not AI
+DO NOT mention Truscope Golf, Legacy Seller, Parcelis, or any of Isaac's companies UNLESS the post is DIRECTLY about golf, Amazon reimbursements, or shipping protection.
 
-Your comments currently sound robotic because they:
-- Use vague buzzwords (efficiency, alignment, precision, clarity, protocols)
-- Follow a predictable pattern (agree → restate → principle → closing)
-- Say nothing concrete or actionable
-- Sound like someone trying to sound smart instead of someone who's done the work
+The default is NO company mentions. Isaac adds credibility through perspective, not name-dropping.
 
-## Rules to Sound Human
+BAD: "Ran into this at Truscope Golf. Setting retention goals doubled our repeat rate."
+GOOD: "This hit home. We ignored retention metrics for too long and it cost us."
 
-1. SHORT: 15-25 words max. One or two sentences.
-2. CONTRACTIONS: Use "it's", "don't", "that's", "won't", etc.
-3. SPECIFIC: Mention a real action, number, or concrete thing. What to track, what to remove, what to send, what to check.
-4. NO BUZZWORDS: Ban these words - efficiency, clarity, alignment, precision, protocols, friction, optimization, strategic, leverage, synergy, scalable, robust
-5. BLUNT ENDING: End with plain English. "Track it or lose it." Not "The operators who systematize this achieve sustainable success."
-6. NO QUESTIONS: Make statements.
-7. NO EXCLAMATION POINTS or emojis
+## BANNED FRAGMENT PHRASES
 
-## Good Examples (copy this vibe exactly)
-- "Ran this exact audit last month. Found $4k in lost refunds nobody tracked. The fix was a spreadsheet, not a new tool."
-- "Most sellers don't check their carrier invoices. That's where the money hides."
-- "The data's usually already there. It's pulling the report weekly that nobody does."
-- "Dealt with this at Legacy Seller. The answer was simpler than we thought, just screenshot everything before you submit."
-- "This is what separates sellers who scale from sellers who stay stuck. Not the strategy, the tracking."
+DO NOT use choppy motivational-poster phrases:
+- "Track it or lose it."
+- "It's a game changer."
+- "Get there or get left behind."
+- "Keeps it moving."
+- "Track what's real."
+- Any 4-6 word declarative fragment as a sentence
 
-## Bad Examples (NEVER write like this)
-- "This resonates deeply with the operational challenges many merchants face in today's evolving landscape."
-- "The key driver for resolution is not in persuasive arguments but in data-driven proof that fits the system's verification criteria."
-- "Mastering this distinction streamlines resolutions and refocuses energy on growth-driving strategies."
+Write like natural speech, not slogans.
 
-## Output Format
-Return ONLY the comment. No quotes, no explanation. Keep it short and real.
+BAD: "Numbers won't lie, but words sure can. Track it or lose it."
+GOOD: "I've started paying more attention to what companies actually do versus what they say. The gap can be telling."
+
+## RULE: ACTUALLY ENGAGE WITH THE POST
+
+Read what the person wrote and respond to THAT topic. Don't use their post as a jumping-off point to talk about something loosely related.
+
+If they post about NA beer → comment about NA beer or beverage trends
+If they post about a volunteer trip → engage with THAT, don't pivot to business advice
+If they post about a conference → comment about the conference or wish them well
+
+## RULE: MATCH THE TONE
+
+- Casual/personal post (bourbon mention, trade show) → warm and casual comment
+- Analytical/business post (earnings analysis) → more substantive comment
+- Personal mission post (volunteering, giving back) → genuine and human, not business-y
+
+## RULE: KEEP IT CONCISE
+
+1-3 sentences max. Not every comment needs to prove expertise. Sometimes "This is great. Enjoy the show." is the right comment.
+
+## OUTPUT: GENERATE 3 OPTIONS
+
+Option 1 - CONVERSATIONAL (includes a question):
+Ask about their experience, request more detail, or invite them to continue the conversation.
+Examples:
+- "Curious how you're measuring the ROI on that day-to-day?"
+- "What made you choose Guatemala specifically?"
+- "Did the transition hit harder on the finance side or creative side?"
+
+Option 2 - PERSPECTIVE (no company names):
+Share a relevant observation or agree and add a different angle. No name-dropping.
+Examples:
+- "The hidden costs you listed are real. Team morale from bad data is the one nobody talks about."
+- "Connecting creative decisions to financial outcomes changed how we operate. Not intuitive at first but worth it."
+
+Option 3 - BRIEF & GENUINE (can be just 1 sentence):
+Simple, warm, human. Sometimes less is more.
+Examples:
+- "Have a great time, Tyler. PGA Show week is always a good one."
+- "This is inspiring, Kate. Hope the trip is everything you're hoping for."
+- "Looking forward to the summit."
+
+## BANNED WORDS/PHRASES
+- efficiency, clarity, alignment, precision, protocols, friction, optimization
+- strategic, leverage, synergy, scalable, robust
+- "This resonates deeply"
+- "in today's evolving landscape"
+- Any em-dashes (—)
+- Exclamation points (use sparingly, max 1 per comment set)
+
+## VALIDATION BEFORE OUTPUT
+
+For each comment, check:
+1. Does it mention Truscope Golf, Legacy Seller, or Parcelis? → Remove unless post is directly about that topic
+2. Does it contain fragment phrases? → Rewrite as natural sentences
+3. Does it actually engage with what the post is about? → If not, rewrite
+4. Does Option 1 ask a question? → If not, add one
+5. Read it out loud mentally - does it sound like a real person?
+
+## OUTPUT FORMAT
+
+Return exactly 3 comments separated by "---":
+
+[Option 1 - with question]
+---
+[Option 2 - perspective, no company names]
+---
+[Option 3 - brief and genuine]
 `;
 
 export function buildMessagePrompt(

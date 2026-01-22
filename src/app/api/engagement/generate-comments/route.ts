@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { generateComment } from '@/lib/claude';
+import { generateComments } from '@/lib/claude';
 import { updateEngagementPostComments } from '@/lib/supabase';
 import type { Prospect } from '@/types';
 
@@ -22,15 +22,20 @@ export async function POST(request: Request) {
 
     const results = [];
 
-    // Process each post - generate 3 comments
+    // Process each post - generate 3 purposeful comment options
     for (const post of posts) {
       try {
-        // Generate 3 different comments in parallel
-        const commentPromises = Array(3).fill(null).map(() =>
-          generateComment(post.prospect, post.postContent)
-        );
+        // Generate 3 different comment styles in one call:
+        // 1. Conversational (with question)
+        // 2. Perspective (no company names)
+        // 3. Brief and genuine
+        const commentOptions = await generateComments(post.prospect, post.postContent);
 
-        const comments = await Promise.all(commentPromises);
+        const comments = [
+          commentOptions.conversational,
+          commentOptions.perspective,
+          commentOptions.brief
+        ];
 
         // Save comments to database
         await updateEngagementPostComments(post.postId, comments);
@@ -38,7 +43,8 @@ export async function POST(request: Request) {
         results.push({
           postId: post.postId,
           success: true,
-          comments
+          comments,
+          styles: ['conversational', 'perspective', 'brief']
         });
       } catch (error) {
         console.error(`Error generating comments for post ${post.postId}:`, error);
