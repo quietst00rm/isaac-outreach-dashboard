@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import type { ProspectWithPipeline, PipelineStatus, GeneratedMessage } from '@/types';
+import type { ProspectWithPipeline, PipelineStatus, GeneratedMessage, MessageTrack } from '@/types';
 import ResponseGenerator from './ResponseGenerator';
 
 interface ProspectDetailProps {
@@ -11,6 +11,10 @@ interface ProspectDetailProps {
   onStatusChange: (status: PipelineStatus) => void;
   onGenerateMessages: () => void;
   isGenerating?: boolean;
+  generationMetadata?: {
+    track: MessageTrack;
+    personalization_hook: string;
+  } | null;
 }
 
 const statusOptions: { value: PipelineStatus; label: string }[] = [
@@ -27,9 +31,21 @@ const statusOptions: { value: PipelineStatus; label: string }[] = [
 
 const messageTypeLabels: Record<string, string> = {
   connection_request: 'Connection Request',
-  follow_up_1: 'Follow-up #1',
-  follow_up_2: 'Follow-up #2',
+  opening_dm: 'Opening DM',
+  follow_up: 'Follow-up',
+  follow_up_1: 'Follow-up #1',  // Legacy
+  follow_up_2: 'Follow-up #2',  // Legacy
   comment: 'Comment',
+};
+
+const trackLabels: Record<MessageTrack, { label: string; color: string }> = {
+  OPERATOR_EXIT: { label: 'Operator Exit', color: 'bg-purple-100 text-purple-700' },
+  OPERATOR_SCALE: { label: 'Operator Scale', color: 'bg-blue-100 text-blue-700' },
+  OPERATOR_DTC: { label: 'Operator DTC', color: 'bg-green-100 text-green-700' },
+  AGENCY_PARTNER: { label: 'Agency Partner', color: 'bg-orange-100 text-orange-700' },
+  GENERIC_MERCHANT: { label: 'Generic Merchant', color: 'bg-gray-100 text-gray-700' },
+  INFLUENCER_OUTREACH: { label: 'Influencer', color: 'bg-pink-100 text-pink-700' },
+  CONSULTANT_OUTREACH: { label: 'Consultant', color: 'bg-teal-100 text-teal-700' },
 };
 
 function getInitials(name: string): string {
@@ -47,6 +63,7 @@ export function ProspectDetail({
   onStatusChange,
   onGenerateMessages,
   isGenerating = false,
+  generationMetadata,
 }: ProspectDetailProps) {
   const [copiedMessage, setCopiedMessage] = useState<string | null>(null);
   const [showICPBreakdown, setShowICPBreakdown] = useState(false);
@@ -314,6 +331,22 @@ export function ProspectDetail({
                 </button>
               </div>
 
+              {/* Generation Metadata - Track and Personalization Hook */}
+              {generationMetadata && (
+                <div className="mb-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Track:</span>
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${trackLabels[generationMetadata.track].color}`}>
+                      {trackLabels[generationMetadata.track].label}
+                    </span>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                    <p className="text-xs text-blue-600 font-medium mb-1">Personalization Hook</p>
+                    <p className="text-sm text-blue-900">{generationMetadata.personalization_hook}</p>
+                  </div>
+                </div>
+              )}
+
               {Object.keys(groupedMessages).length === 0 ? (
                 <div className="bg-gray-50 rounded-lg p-6 text-center">
                   <svg className="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -326,7 +359,7 @@ export function ProspectDetail({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {['connection_request', 'follow_up_1', 'follow_up_2', 'comment'].map((type) => {
+                  {['connection_request', 'opening_dm', 'follow_up', 'follow_up_1', 'follow_up_2', 'comment'].map((type) => {
                     const messages = groupedMessages[type];
                     if (!messages || messages.length === 0) return null;
 

@@ -1,121 +1,281 @@
 import OpenAI from 'openai';
-import { buildMessagePrompt } from './voice-profile';
+import * as fs from 'fs';
+import * as path from 'path';
 import type { Prospect, MessageType } from '@/types';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || ''
 });
 
-// Banned words/phrases for validation
-const CONNECTION_REQUEST_BANNED = [
-  'parcelis', 'shipping', 'protection', 'insurance', 'synerg', 'align',
-  'overlap', 'collaborate', 'value', 'opportunity', 'isaac stern',
-  'truscope', 'legacy seller', 'ace comply', "let's connect"
+// Track types based on the skill file
+export type MessageTrack =
+  | 'OPERATOR_EXIT'
+  | 'OPERATOR_SCALE'
+  | 'OPERATOR_DTC'
+  | 'AGENCY_PARTNER'
+  | 'GENERIC_MERCHANT'
+  | 'INFLUENCER_OUTREACH'
+  | 'CONSULTANT_OUTREACH';
+
+// Influencer signals for freelancer qualification
+const INFLUENCER_SIGNALS = [
+  'podcast', 'newsletter', 'followers', 'subscribers',
+  'content creator', 'speaker', 'author', 'youtube',
+  'influencer', 'creator economy', 'audience'
 ];
 
-const FOLLOW_UP_1_BANNED = [
-  'great to connect', 'thanks for connecting', 'pleasure to connect',
-  'hidden money', 'profit leak', 'untapped revenue', 'protect your bottom line',
-  'curious if', 'open to sharing', 'would love to explore'
+// Consultant signals for freelancer qualification
+const CONSULTANT_SIGNALS = [
+  'consultant', 'advisor', 'works with brands', 'shopify expert',
+  'e-commerce consultant', 'ecommerce consultant', 'consulting',
+  'advisory', 'fractional', 'works with merchants', 'brand strategist'
 ];
 
-const FOLLOW_UP_2_BANNED = [
-  'hope this finds', 'touch base', 'following up', 'circling back',
-  'circle back', 'revisit', 'previous conversation', 'our discussion',
-  'if now isn\'t a good time', 'best,', 'best regards', 'thank you,', 'isaac'
-];
-
-interface ValidationResult {
-  valid: boolean;
-  reason?: string;
+export interface MessageGenerationResult {
+  track: MessageTrack;
+  personalization_hook: string;
+  messages: {
+    connection_request: string;
+    opening_dm: string;
+    follow_up: string;
+  };
 }
 
-function validateConnectionRequest(message: string): ValidationResult {
-  // Allow blank requests
-  if (message === '[BLANK]' || message === '' || message.trim() === '') {
+export interface SkippedResult {
+  skipped: true;
+  skip_reason: string;
+}
+
+export type GenerationResult = MessageGenerationResult | SkippedResult;
+
+/**
+ * Check if a freelancer has influencer or consultant signals
+ */
+function hasFreelancerSignals(prospect: Partial<Prospect>): { hasSignals: boolean; type?: 'influencer' | 'consultant' } {
+  const textToSearch = [
+    prospect.headline || '',
+    prospect.aboutSummary || ''
+  ].join(' ').toLowerCase();
+
+  // Check for influencer signals
+  for (const signal of INFLUENCER_SIGNALS) {
+    if (textToSearch.includes(signal)) {
+      return { hasSignals: true, type: 'influencer' };
+    }
+  }
+
+  // Check for consultant signals
+  for (const signal of CONSULTANT_SIGNALS) {
+    if (textToSearch.includes(signal)) {
+      return { hasSignals: true, type: 'consultant' };
+    }
+  }
+
+  return { hasSignals: false };
+}
+
+/**
+ * Validate if a prospect qualifies for message generation
+ */
+export function validateProspectForGeneration(prospect: Partial<Prospect>): { valid: boolean; reason?: string; freelancerType?: 'influencer' | 'consultant' } {
+  // Check required fields
+  if (!prospect.fullName) {
+    return { valid: false, reason: 'Missing full_name - required for personalization' };
+  }
+
+  if (!prospect.companyName) {
+    return { valid: false, reason: 'Missing company_name - required for quality outreach' };
+  }
+
+  const segment = prospect.icpScoreBreakdown?.segment || 'unknown';
+  const icpScore = prospect.icpScore ?? 0;
+
+  // Merchants and agencies: require icp_score >= 50
+  if (segment === 'merchant' || segment === 'agency') {
+    if (icpScore < 50) {
+      return { valid: false, reason: `ICP score ${icpScore} below threshold of 50 for ${segment}` };
+    }
     return { valid: true };
   }
 
-  // Check length
-  if (message.length > 180) {
-    return { valid: false, reason: `Too long: ${message.length} chars (max 180)` };
+  // Freelancers: only include with influencer or consultant signals
+  if (segment === 'freelancer') {
+    const freelancerCheck = hasFreelancerSignals(prospect);
+    if (!freelancerCheck.hasSignals) {
+      return {
+        valid: false,
+        reason: 'Freelancer without influencer signals (podcast, newsletter, followers, subscribers, content creator, speaker, author) or consultant signals (consultant, advisor, works with brands, shopify expert, e-commerce consultant)'
+      };
+    }
+    return { valid: true, freelancerType: freelancerCheck.type };
   }
 
-  // Check banned words
-  const lowerMessage = message.toLowerCase();
-  for (const banned of CONNECTION_REQUEST_BANNED) {
-    if (lowerMessage.includes(banned)) {
-      return { valid: false, reason: `Contains banned phrase: "${banned}"` };
+  // Unknown segment - skip
+  return { valid: false, reason: `Unknown segment: ${segment}` };
+}
+
+/**
+ * Classify prospect into a track based on their data
+ */
+function classifyProspectTrack(prospect: Partial<Prospect>, freelancerType?: 'influencer' | 'consultant'): MessageTrack {
+  const segment = prospect.icpScoreBreakdown?.segment || 'unknown';
+  const aboutSummary = (prospect.aboutSummary || '').toLowerCase();
+  const companySize = (prospect.companySize || '').toLowerCase();
+  const companyIndustry = (prospect.companyIndustry || '').toLowerCase();
+
+  // Freelancer tracks
+  if (segment === 'freelancer') {
+    if (freelancerType === 'influencer') {
+      return 'INFLUENCER_OUTREACH';
+    }
+    return 'CONSULTANT_OUTREACH';
+  }
+
+  // Agency track
+  if (segment === 'agency') {
+    return 'AGENCY_PARTNER';
+  }
+
+  // Merchant tracks - check in priority order
+  if (segment === 'merchant') {
+    // OPERATOR_EXIT: Check for exit/acquisition experience
+    const exitPatterns = ['sold', 'exit', 'acquired', 'acquisition', 'founded and sold', 'built and sold', 'exited'];
+    for (const pattern of exitPatterns) {
+      if (aboutSummary.includes(pattern)) {
+        return 'OPERATOR_EXIT';
+      }
+    }
+
+    // OPERATOR_SCALE: Check for scale indicators
+    const scalePatterns = ['scaling', 'growth', 'grew', 'million', '$m', 'revenue'];
+    const scaleSizes = ['51-200', '201-500', '501-1000'];
+
+    for (const size of scaleSizes) {
+      if (companySize.includes(size)) {
+        return 'OPERATOR_SCALE';
+      }
+    }
+    for (const pattern of scalePatterns) {
+      if (aboutSummary.includes(pattern)) {
+        return 'OPERATOR_SCALE';
+      }
+    }
+
+    // OPERATOR_DTC: Check for DTC industry
+    const dtcIndustries = ['apparel', 'fashion', 'consumer', 'retail', 'beauty', 'food', 'beverage', 'wellness'];
+    for (const industry of dtcIndustries) {
+      if (companyIndustry.includes(industry)) {
+        return 'OPERATOR_DTC';
+      }
+    }
+
+    // Default to generic merchant
+    return 'GENERIC_MERCHANT';
+  }
+
+  return 'GENERIC_MERCHANT';
+}
+
+/**
+ * Extract personalization hook from prospect data
+ */
+function extractPersonalizationHook(prospect: Partial<Prospect>): string {
+  const aboutSummary = prospect.aboutSummary || '';
+  const headline = prospect.headline || '';
+  const companyIndustry = prospect.companyIndustry || '';
+
+  // Priority 1: Specific achievement with numbers
+  const achievementPatterns = [
+    /\$[\d.]+\s*(million|m|billion|b|k)/i,
+    /(\d+)\+?\s*years/i,
+    /grew\s+(from\s+)?[\w\s]+to\s+[\w\s$\d]+/i,
+    /#1\s+[\w\s]+/i,
+    /largest\s+[\w\s]+/i
+  ];
+
+  for (const pattern of achievementPatterns) {
+    const match = aboutSummary.match(pattern);
+    if (match) {
+      // Extract surrounding context
+      const index = aboutSummary.indexOf(match[0]);
+      const start = Math.max(0, index - 30);
+      const end = Math.min(aboutSummary.length, index + match[0].length + 30);
+      let context = aboutSummary.slice(start, end).trim();
+      // Clean up to sentence boundaries if possible
+      if (start > 0) context = '...' + context;
+      if (end < aboutSummary.length) context = context + '...';
+      return context;
     }
   }
 
-  return { valid: true };
-}
-
-function validateFollowUp1(message: string): ValidationResult {
-  // Check length
-  if (message.length > 300) {
-    return { valid: false, reason: `Too long: ${message.length} chars (max 300)` };
-  }
-
-  // Must end with question mark
-  if (!message.trim().endsWith('?')) {
-    return { valid: false, reason: 'Must end with a question mark' };
-  }
-
-  // Check banned phrases
-  const lowerMessage = message.toLowerCase();
-  for (const banned of FOLLOW_UP_1_BANNED) {
-    if (lowerMessage.includes(banned)) {
-      return { valid: false, reason: `Contains banned phrase: "${banned}"` };
+  // Priority 2: Exit/acquisition reference
+  const exitPatterns = ['sold to', 'acquired by', 'exited', 'founded and sold', 'built and sold'];
+  for (const pattern of exitPatterns) {
+    if (aboutSummary.toLowerCase().includes(pattern)) {
+      const index = aboutSummary.toLowerCase().indexOf(pattern);
+      const start = Math.max(0, index - 20);
+      const end = Math.min(aboutSummary.length, index + pattern.length + 40);
+      let context = aboutSummary.slice(start, end).trim();
+      if (start > 0) context = '...' + context;
+      if (end < aboutSummary.length) context = context + '...';
+      return context;
     }
   }
 
-  // Count sentences (rough check)
-  const sentenceCount = (message.match(/[.!?]+/g) || []).length;
-  if (sentenceCount > 3) {
-    return { valid: false, reason: `Too many sentences: ${sentenceCount} (max 3)` };
-  }
-
-  return { valid: true };
-}
-
-function validateFollowUp2(message: string): ValidationResult {
-  // Check length
-  if (message.length > 100) {
-    return { valid: false, reason: `Too long: ${message.length} chars (max 100)` };
-  }
-
-  // Check banned phrases
-  const lowerMessage = message.toLowerCase();
-  for (const banned of FOLLOW_UP_2_BANNED) {
-    if (lowerMessage.includes(banned)) {
-      return { valid: false, reason: `Contains banned phrase: "${banned}"` };
+  // Priority 3: Role context
+  const rolePatterns = ['i lead', 'i run', 'responsible for', 'overseeing', 'head of', 'leading'];
+  for (const pattern of rolePatterns) {
+    if (aboutSummary.toLowerCase().includes(pattern)) {
+      const index = aboutSummary.toLowerCase().indexOf(pattern);
+      const end = Math.min(aboutSummary.length, index + 60);
+      let context = aboutSummary.slice(index, end).trim();
+      if (end < aboutSummary.length) context = context + '...';
+      return context;
     }
   }
 
-  // Count sentences (rough check)
-  const sentenceCount = (message.match(/[.!?]+/g) || []).length;
-  if (sentenceCount > 2) {
-    return { valid: false, reason: `Too many sentences: ${sentenceCount} (max 2)` };
+  // Priority 4: Company positioning
+  const positionPatterns = ['premier', 'leading', 'fastest growing', 'largest', 'top'];
+  for (const pattern of positionPatterns) {
+    if (aboutSummary.toLowerCase().includes(pattern)) {
+      const index = aboutSummary.toLowerCase().indexOf(pattern);
+      const end = Math.min(aboutSummary.length, index + 50);
+      let context = aboutSummary.slice(index, end).trim();
+      if (end < aboutSummary.length) context = context + '...';
+      return context;
+    }
   }
 
-  return { valid: true };
+  // Fallback: Use headline if about_summary is short
+  if (aboutSummary.length < 50 && headline.length > 10) {
+    return headline;
+  }
+
+  // Fallback: Use first meaningful part of about_summary
+  if (aboutSummary.length > 0) {
+    const truncated = aboutSummary.slice(0, 80).trim();
+    return truncated.length < aboutSummary.length ? truncated + '...' : truncated;
+  }
+
+  // Last resort: Generic based on industry
+  if (companyIndustry) {
+    return `your work in the ${companyIndustry} space`;
+  }
+
+  return `your work at ${prospect.companyName || 'your company'}`;
 }
 
-function validateMessage(message: string, messageType: MessageType): ValidationResult {
-  switch (messageType) {
-    case 'connection_request':
-      return validateConnectionRequest(message);
-    case 'follow_up_1':
-      return validateFollowUp1(message);
-    case 'follow_up_2':
-      return validateFollowUp2(message);
-    case 'comment':
-      // Comments have looser validation
-      return { valid: true };
-    default:
-      return { valid: true };
+/**
+ * Load the skill file for system prompt
+ */
+function loadSkillFile(): string {
+  try {
+    const skillPath = path.join(process.cwd(), 'src', 'prompts', 'isaac-linkedin-outreach.md');
+    return fs.readFileSync(skillPath, 'utf-8');
+  } catch (error) {
+    console.error('Error loading skill file:', error);
+    // Return a minimal fallback
+    return 'Generate personalized LinkedIn outreach messages following Isaac Stern\'s voice.';
   }
 }
 
@@ -162,15 +322,6 @@ function buildProspectContext(prospect: Partial<Prospect>): string {
       ? prospect.aboutSummary.substring(0, 500) + '...'
       : prospect.aboutSummary;
     parts.push(`About: ${truncatedAbout}`);
-
-    // Flag notable patterns in about summary
-    const aboutLower = prospect.aboutSummary.toLowerCase();
-    if (aboutLower.includes('exit') || aboutLower.includes('sold') || aboutLower.includes('acquisition')) {
-      parts.push(`[NOTE: Has exit/acquisition experience - can reference "fellow operator"]`);
-    }
-    if (aboutLower.includes('founder') || aboutLower.includes('co-founder')) {
-      parts.push(`[NOTE: Founder - can reference entrepreneurial journey]`);
-    }
   }
 
   if (prospect.careerHistory && prospect.careerHistory.length > 0) {
@@ -194,93 +345,110 @@ function buildProspectContext(prospect: Partial<Prospect>): string {
   return parts.join('\n');
 }
 
-export async function generateMessage(
-  prospect: Partial<Prospect>,
-  messageType: MessageType,
-  maxRetries: number = 3
-): Promise<string> {
-  const prospectContext = buildProspectContext(prospect);
-  const prompt = buildMessagePrompt(messageType, prospectContext);
-
-  let lastError: string | undefined;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      max_tokens: 300,
-      temperature: attempt === 1 ? 0.7 : 0.9, // Increase temperature on retries for variety
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a message generator for LinkedIn outreach. Follow the constraints EXACTLY. Return ONLY the message text, nothing else.'
-        },
-        {
-          role: 'user',
-          content: prompt + (lastError ? `\n\n[PREVIOUS ATTEMPT FAILED: ${lastError}. Try again following constraints more carefully.]` : '')
-        }
-      ]
-    });
-
-    let content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('No response from OpenAI');
-    }
-
-    // Clean up the response
-    content = content.trim();
-
-    // Remove surrounding quotes if present
-    if ((content.startsWith('"') && content.endsWith('"')) ||
-        (content.startsWith("'") && content.endsWith("'"))) {
-      content = content.slice(1, -1).trim();
-    }
-
-    // Handle [BLANK] for connection requests
-    if (messageType === 'connection_request' &&
-        (content === '[BLANK]' || content.toLowerCase() === 'blank')) {
-      return ''; // Return empty string for blank requests
-    }
-
-    // Validate the message
-    const validation = validateMessage(content, messageType);
-
-    if (validation.valid) {
-      return content;
-    }
-
-    console.warn(`Attempt ${attempt}/${maxRetries} failed validation: ${validation.reason}`);
-    lastError = validation.reason;
-
-    // If this was the last attempt, return the message anyway but log warning
-    if (attempt === maxRetries) {
-      console.error(`Message failed validation after ${maxRetries} attempts. Returning anyway: ${validation.reason}`);
-      return content;
-    }
+/**
+ * Generate all messages for a prospect using the skill file approach
+ */
+export async function generateMessagesWithSkill(
+  prospect: Partial<Prospect>
+): Promise<GenerationResult> {
+  // Validate prospect first
+  const validation = validateProspectForGeneration(prospect);
+  if (!validation.valid) {
+    return {
+      skipped: true,
+      skip_reason: validation.reason!
+    };
   }
 
-  throw new Error('Failed to generate valid message');
+  // Classify into track
+  const track = classifyProspectTrack(prospect, validation.freelancerType);
+
+  // Extract personalization hook
+  const personalization_hook = extractPersonalizationHook(prospect);
+
+  // Load skill file as system prompt
+  const skillPrompt = loadSkillFile();
+
+  // Build prospect context
+  const prospectContext = buildProspectContext(prospect);
+
+  // Generate messages using OpenAI
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    max_tokens: 1500,
+    temperature: 0.7,
+    messages: [
+      {
+        role: 'system',
+        content: skillPrompt
+      },
+      {
+        role: 'user',
+        content: `Generate all three message types (connection_request, opening_dm, follow_up) for this prospect.
+
+## Assigned Track: ${track}
+
+## Personalization Hook
+Use this specific detail in the messages: "${personalization_hook}"
+
+## Prospect Data
+${prospectContext}
+
+## Output Format
+Return ONLY a JSON object with this exact structure, no markdown code blocks:
+{
+  "connection_request": "the message text here",
+  "opening_dm": "the message text here",
+  "follow_up": "the message text here"
 }
 
-export async function generateAllMessages(
-  prospect: Partial<Prospect>
-): Promise<{
-  connectionRequest: string;
-  followUp1: string;
-  followUp2: string;
-}> {
-  // Generate all three message types in parallel
-  const [connectionRequest, followUp1, followUp2] = await Promise.all([
-    generateMessage(prospect, 'connection_request'),
-    generateMessage(prospect, 'follow_up_1'),
-    generateMessage(prospect, 'follow_up_2')
-  ]);
+Remember:
+- connection_request: Max 300 characters
+- opening_dm: Max 800 characters
+- follow_up: Max 400 characters
+- NO em-dashes, NO exclamation points, NO emojis
+- End statements with periods (opening_dm should not end with a question)
+- All messages end with "Isaac" on its own line`
+      }
+    ]
+  });
+
+  const content = response.choices[0]?.message?.content;
+  if (!content) {
+    throw new Error('No response from OpenAI');
+  }
+
+  // Parse the JSON response
+  let messages: { connection_request: string; opening_dm: string; follow_up: string };
+  try {
+    // Clean up potential markdown code blocks
+    let cleanContent = content.trim();
+    if (cleanContent.startsWith('```json')) {
+      cleanContent = cleanContent.slice(7);
+    }
+    if (cleanContent.startsWith('```')) {
+      cleanContent = cleanContent.slice(3);
+    }
+    if (cleanContent.endsWith('```')) {
+      cleanContent = cleanContent.slice(0, -3);
+    }
+    messages = JSON.parse(cleanContent.trim());
+  } catch (parseError) {
+    console.error('Failed to parse OpenAI response as JSON:', content);
+    throw new Error('Failed to parse message generation response');
+  }
 
   return {
-    connectionRequest,
-    followUp1,
-    followUp2
+    track,
+    personalization_hook,
+    messages
   };
 }
+
+// ===== LEGACY FUNCTIONS (kept for backwards compatibility with comments feature) =====
+
+// Import from deprecated voice-profile for comment generation
+import { buildMessagePrompt, COMMENT_PROMPT } from './voice-profile';
 
 // Banned phrases for comment validation
 const COMMENT_BANNED_PHRASES = [
@@ -404,6 +572,32 @@ export async function generateComment(
 ): Promise<string> {
   const options = await generateComments(prospect, postContent);
   return options.conversational;
+}
+
+// Legacy function - kept for backwards compatibility but now wraps new implementation
+export async function generateAllMessages(
+  prospect: Partial<Prospect>
+): Promise<{
+  connectionRequest: string;
+  followUp1: string;
+  followUp2: string;
+}> {
+  const result = await generateMessagesWithSkill(prospect);
+
+  if ('skipped' in result) {
+    // Return empty messages if skipped
+    return {
+      connectionRequest: '',
+      followUp1: '',
+      followUp2: ''
+    };
+  }
+
+  return {
+    connectionRequest: result.messages.connection_request,
+    followUp1: result.messages.opening_dm,
+    followUp2: result.messages.follow_up
+  };
 }
 
 // Batch generate messages for multiple prospects

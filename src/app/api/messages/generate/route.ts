@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateAllMessages } from '@/lib/claude';
+import { generateMessagesWithSkill, type GenerationResult, type MessageTrack } from '@/lib/claude';
 import type { Prospect } from '@/types';
+
+export interface MessageGenerationResponse {
+  track: MessageTrack;
+  personalization_hook: string;
+  messages: {
+    connection_request: string;
+    opening_dm: string;
+    follow_up: string;
+  };
+}
+
+export interface SkippedResponse {
+  skipped: true;
+  skip_reason: string;
+}
+
+export type GenerateMessagesResponse = MessageGenerationResponse | SkippedResponse;
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,9 +39,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const messages = await generateAllMessages(prospect);
+    const result = await generateMessagesWithSkill(prospect);
 
-    return NextResponse.json({ messages });
+    // Return the full result which includes either:
+    // - { track, personalization_hook, messages } for successful generation
+    // - { skipped: true, skip_reason } for skipped prospects
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Error generating messages:', error);
     return NextResponse.json(
